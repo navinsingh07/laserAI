@@ -6,11 +6,29 @@ const API_BASE = (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_A
 
 const api = axios.create({
   baseURL: API_BASE,
-  timeout: 15000,
+  timeout: 4000,
   headers: {
     'Content-Type': 'application/json',
   },
 });
+
+// Intercept HTML responses from static hosting (e.g. Netlify SPA /* -> /index.html 200)
+api.interceptors.response.use(
+  (response) => {
+    if (
+      typeof response.data === 'string' &&
+      (response.data.trim().startsWith('<!doctype') ||
+        response.data.trim().startsWith('<html') ||
+        response.data.includes('<div id="root">'))
+    ) {
+      const err = new Error('Static host HTML fallback intercepted for API route');
+      err.response = { status: 404, data: null };
+      return Promise.reject(err);
+    }
+    return response;
+  },
+  (error) => Promise.reject(error)
+);
 
 export const PERSONAS = {
   'Founder': {
@@ -60,14 +78,25 @@ export const authAPI = {
   getMe: async () => {
     try {
       const resp = await api.get('/auth/me');
-      return resp.data;
+      if (resp.data && typeof resp.data === 'object' && !Array.isArray(resp.data) && resp.data.role) {
+        return resp.data;
+      }
+      return {
+        id: 'usr_demo_google',
+        name: 'Alex Morgan',
+        email: 'alex.founder@laserai.demo',
+        role: 'Founder',
+        digest_frequency: 'Daily',
+        slack_webhook_url: '',
+        authenticated: false,
+      };
     } catch (e) {
       return {
         id: 'usr_demo_google',
         name: 'Alex Morgan',
         email: 'alex.founder@laserai.demo',
         role: 'Founder',
-        digest_frequency: 'Instant Demo',
+        digest_frequency: 'Daily',
         slack_webhook_url: '',
         authenticated: false,
       };
@@ -77,14 +106,25 @@ export const authAPI = {
   mockLogin: async () => {
     try {
       const resp = await api.post('/auth/mock-login');
-      return resp.data;
+      if (resp.data && typeof resp.data === 'object' && !Array.isArray(resp.data) && resp.data.role) {
+        return resp.data;
+      }
+      return {
+        id: 'usr_demo_google',
+        name: 'Alex Morgan',
+        email: 'alex.founder@laserai.demo',
+        role: 'Founder',
+        digest_frequency: 'Daily',
+        slack_webhook_url: '',
+        authenticated: true,
+      };
     } catch (e) {
       return {
         id: 'usr_demo_google',
         name: 'Alex Morgan',
         email: 'alex.founder@laserai.demo',
         role: 'Founder',
-        digest_frequency: 'Instant Demo',
+        digest_frequency: 'Daily',
         slack_webhook_url: '',
         authenticated: true,
       };
@@ -94,7 +134,14 @@ export const authAPI = {
   onboarding: async (data) => {
     try {
       const resp = await api.post('/auth/onboarding', data);
-      return resp.data;
+      if (resp.data && typeof resp.data === 'object' && !Array.isArray(resp.data) && resp.data.role) {
+        return resp.data;
+      }
+      return {
+        id: 'usr_demo_google',
+        ...data,
+        authenticated: true,
+      };
     } catch (e) {
       return {
         id: 'usr_demo_google',
@@ -107,7 +154,10 @@ export const authAPI = {
   switchRole: async (role) => {
     try {
       const resp = await api.put('/auth/role', null, { params: { role } });
-      return resp.data;
+      if (resp.data && typeof resp.data === 'object') {
+        return resp.data;
+      }
+      return { role };
     } catch (e) {
       return { role };
     }
@@ -116,25 +166,56 @@ export const authAPI = {
 
 export const feedbackAPI = {
   uploadDataset: async (file) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    const resp = await api.post('/feedback/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-    return resp.data;
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const resp = await api.post('/feedback/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      if (resp.data && typeof resp.data === 'object' && !Array.isArray(resp.data)) {
+        return resp.data;
+      }
+      return {
+        message: 'Dataset uploaded (demo mode).',
+        filename: file?.name || 'custom_dataset.csv',
+        total_rows: 150,
+      };
+    } catch (e) {
+      return {
+        message: 'Dataset uploaded (demo mode).',
+        filename: file?.name || 'custom_dataset.csv',
+        total_rows: 150,
+      };
+    }
   },
 
   resetDataset: async () => {
-    const resp = await api.post('/feedback/reset');
-    return resp.data;
+    try {
+      const resp = await api.post('/feedback/reset');
+      if (resp.data && typeof resp.data === 'object' && !Array.isArray(resp.data)) {
+        return resp.data;
+      }
+      return {
+        message: 'Dataset reset to default Google Sheet.',
+        total_rows: 150,
+      };
+    } catch (e) {
+      return {
+        message: 'Dataset reset to default Google Sheet.',
+        total_rows: 150,
+      };
+    }
   },
 
   getDatasetInfo: async () => {
     try {
       const resp = await api.get('/feedback/dataset-info');
-      return resp.data;
+      if (resp.data && typeof resp.data === 'object' && !Array.isArray(resp.data) && resp.data.total_rows !== undefined) {
+        return resp.data;
+      }
+      return { is_custom: false, filename: 'Connected Google Sheet', total_rows: 150 };
     } catch (e) {
       return { is_custom: false, filename: 'Connected Google Sheet', total_rows: 150 };
     }
@@ -146,7 +227,10 @@ export const feedbackAPI = {
       if (role) params.role = role;
       if (sheetUrl) params.sheet_url = sheetUrl;
       const resp = await api.get('/feedback/raw', { params });
-      return resp.data;
+      if (Array.isArray(resp.data) && resp.data.length > 0) {
+        return resp.data;
+      }
+      return getFallbackRawFeedback(role);
     } catch (e) {
       return getFallbackRawFeedback(role);
     }
@@ -156,7 +240,25 @@ export const feedbackAPI = {
     try {
       const params = sheetUrl ? { sheet_url: sheetUrl } : {};
       const resp = await api.get('/feedback/stats', { params });
-      return resp.data;
+      if (resp.data && typeof resp.data === 'object' && !Array.isArray(resp.data) && resp.data.total_records !== undefined) {
+        return resp.data;
+      }
+      return {
+        total_records: feedbackDataset.length,
+        average_rating: 3.4,
+        categories: {
+          'Performance/Bugs': 15,
+          'Integrations': 15,
+          'Mobile App': 15,
+          'Security/SSO': 15,
+          'Pricing/Plans': 15,
+          'UI/UX': 15,
+          'Team Collaboration': 15,
+          'Onboarding': 15,
+          'Reporting/Exports': 15,
+          'Notifications': 15,
+        },
+      };
     } catch (e) {
       return {
         total_records: feedbackDataset.length,
@@ -185,7 +287,10 @@ export const digestAPI = {
         role,
         sheet_url: sheetUrl,
       });
-      return resp.data;
+      if (resp.data && typeof resp.data === 'object' && !Array.isArray(resp.data) && resp.data.role) {
+        return resp.data;
+      }
+      return getFallbackDigest(role);
     } catch (e) {
       return getFallbackDigest(role);
     }
@@ -216,7 +321,7 @@ export const digestAPI = {
 };
 
 // Fallback generators with strict segregation
-function getFallbackDigest(role) {
+export function getFallbackDigest(role) {
   const timestamp = new Date().toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
@@ -428,7 +533,7 @@ function getFallbackDigest(role) {
   }
 }
 
-function getFallbackRawFeedback(role) {
+export function getFallbackRawFeedback(role) {
   const engRegex = /\b(504|gateway|timeout|crash|uikit|safari|firefox|memory leak|oom|freeze|disconnect|websocket|cache|redis|api|sync|oauth|webhook|jira|github|zapier|lag|slow|load time|export|upload|constraint|recursion|unresponsive|exception|bug|error|glitch|tab|white flash|progress bar|render|stalls|fails)\b/i;
   const salesRegex = /\b(sso|okta|saml|procurement|enterprise|deal|contract|pricing|plan|seat|tier|folder|permission|compliance|audit|client|buyer|sales|objection|competitor|quote|license|invoice|password|guest|view-only|agency|prospect|contractor|infosec|access control|annual)\b/i;
 

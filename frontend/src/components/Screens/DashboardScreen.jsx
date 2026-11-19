@@ -582,19 +582,19 @@ export default function DashboardScreen({
   const activeRoleData = roleData[role] || roleData.Founder;
 
   // Single-Pass AI Synthesis & Filtered Outputs (Done by Laser AI)
-  const synthesisBullets = (digest?.ai_summary_bullets && digest.ai_summary_bullets.length > 0)
+  const synthesisBullets = (digest?.ai_summary_bullets && Array.isArray(digest.ai_summary_bullets) && digest.ai_summary_bullets.length > 0)
     ? digest.ai_summary_bullets
-    : activeRoleData.synthesis;
+    : (activeRoleData?.synthesis || []);
 
-  const dynamicThemes = (digest?.top_themes && digest.top_themes.length > 0)
+  const dynamicThemes = (digest?.top_themes && Array.isArray(digest.top_themes) && digest.top_themes.length > 0)
     ? digest.top_themes
-    : activeRoleData.insights;
+    : (activeRoleData?.insights || []);
 
   const totalReviewsCount = digest?.matched_role_rows_count !== undefined
     ? digest.matched_role_rows_count
-    : (role === 'Engineers' ? 49 : role === 'Sales' ? 29 : (rawFeedback?.length || 150));
+    : (role === 'Engineers' ? 49 : role === 'Sales' ? 29 : (Array.isArray(rawFeedback) ? rawFeedback.length : 150));
 
-  const totalSheetRowsCount = digest?.total_sheet_rows || datasetInfo?.totalRows || rawFeedback?.length || 150;
+  const totalSheetRowsCount = digest?.total_sheet_rows || datasetInfo?.totalRows || (Array.isArray(rawFeedback) ? rawFeedback.length : 150);
 
   const dynamicKpis = [
     {
@@ -655,11 +655,11 @@ export default function DashboardScreen({
   // Role-Based Review Filtering for Raw Rows View (Done by Laser AI)
   // For Engineers and Sales, role isolation strictly enforces that 'All Rows' is disabled and never accessible
   const effectiveScopeMode = isStrictScopedRole ? 'scoped' : rawScopeMode;
-  const baseRawRows = (effectiveScopeMode === 'scoped' && digest?.filtered_reviews && digest.filtered_reviews.length > 0)
+  const baseRawRows = (effectiveScopeMode === 'scoped' && Array.isArray(digest?.filtered_reviews) && digest.filtered_reviews.length > 0)
     ? digest.filtered_reviews
-    : (isStrictScopedRole ? [] : (rawFeedback || []));
+    : (isStrictScopedRole ? [] : (Array.isArray(rawFeedback) ? rawFeedback : []));
 
-  const filteredRaw = baseRawRows.filter((item) => {
+  const filteredRaw = (Array.isArray(baseRawRows) ? baseRawRows : []).filter((item) => {
     if ((effectiveScopeMode === 'scoped' || isStrictScopedRole) && (!digest?.filtered_reviews || digest.filtered_reviews.length === 0)) {
       const engRegex = /\b(504|gateway|timeout|crash|uikit|safari|firefox|memory leak|oom|freeze|disconnect|websocket|cache|redis|api|sync|oauth|webhook|jira|github|zapier|lag|slow|load time|export|upload|constraint|recursion|unresponsive|exception|bug|error|glitch|tab|white flash|progress bar|render|stalls|fails)\b/i;
       const salesRegex = /\b(sso|okta|saml|procurement|enterprise|deal|contract|pricing|plan|seat|tier|folder|permission|compliance|audit|client|buyer|sales|objection|competitor|quote|license|invoice|password|guest|view-only|agency|prospect|contractor|infosec|access control|annual)\b/i;
@@ -1326,7 +1326,7 @@ export default function DashboardScreen({
 
                     {/* Real Customer Quotes */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-                      {item.quotes.map((q, qIdx) => (
+                      {Array.isArray(item?.quotes) && item.quotes.map((q, qIdx) => (
                         <div
                           key={qIdx}
                           className="bg-white rounded-xl p-3.5 border border-slate-200/80 shadow-xs space-y-2 flex flex-col justify-between"
