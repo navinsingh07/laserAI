@@ -314,26 +314,30 @@ export async function handler(event, context) {
         }
       }
 
-      // B. Try Gmail SMTP if Resend wasn't sent
+      // B. Try Gmail SMTP (Port 465 SSL first for Netlify/Lambda, then Port 587 fallback)
       if (!email_sent) {
         const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
-        const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
         const smtpUser = process.env.SMTP_USER || 'laserai.digest@gmail.com';
         const smtpPass = (process.env.SMTP_PASS || 'hwjnpsapqqtktqou').replace(/\s+/g, '');
 
         if (smtpUser && smtpPass) {
+          // 1. Try Port 465 direct SSL (Netlify recommended)
           try {
-            const transporter = nodemailer.createTransport({
+            const transporter465 = nodemailer.createTransport({
               host: smtpHost,
-              port: smtpPort,
-              secure: smtpPort === 465,
+              port: 465,
+              secure: true,
               auth: {
                 user: smtpUser,
                 pass: smtpPass,
               },
+              tls: { rejectUnauthorized: false },
+              connectionTimeout: 8000,
+              greetingTimeout: 8000,
+              socketTimeout: 8000,
             });
 
-            await transporter.sendMail({
+            await transporter465.sendMail({
               from: `Laser AI <${smtpUser}>`,
               to: cleanEmail,
               subject,
@@ -343,10 +347,39 @@ export async function handler(event, context) {
 
             email_sent = true;
             email_message = `Digest sent to your ${cleanEmail}.`;
-          } catch (smtpErr) {
-            console.error('SMTP error:', smtpErr.message);
-            email_sent = false;
-            email_message = `Gmail SMTP error: ${smtpErr.message}`;
+          } catch (err465) {
+            console.warn('Port 465 SSL failed, trying port 587:', err465.message);
+            // 2. Try Port 587 as fallback
+            try {
+              const transporter587 = nodemailer.createTransport({
+                host: smtpHost,
+                port: 587,
+                secure: false,
+                auth: {
+                  user: smtpUser,
+                  pass: smtpPass,
+                },
+                tls: { rejectUnauthorized: false },
+                connectionTimeout: 8000,
+                greetingTimeout: 8000,
+                socketTimeout: 8000,
+              });
+
+              await transporter587.sendMail({
+                from: `Laser AI <${smtpUser}>`,
+                to: cleanEmail,
+                subject,
+                text: digest?.executive_summary || 'Laser AI Product Digest',
+                html: htmlContent,
+              });
+
+              email_sent = true;
+              email_message = `Digest sent to your ${cleanEmail}.`;
+            } catch (err587) {
+              console.error('All SMTP ports failed:', err587.message);
+              email_sent = false;
+              email_message = `Gmail SMTP error: ${err465.message || err587.message}`;
+            }
           }
         }
       }

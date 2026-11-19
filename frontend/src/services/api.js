@@ -297,46 +297,61 @@ export const digestAPI = {
   },
 
   dispatch: async (digest, recipientEmail, slackWebhookUrl) => {
-    // 1. Try /notify/dispatch via api instance (which hits local backend or rewritten netlify function)
-    try {
-      const resp = await api.post('/notify/dispatch', {
-        digest,
-        recipient_email: recipientEmail,
-        slack_webhook_url: slackWebhookUrl,
-      }, { timeout: 20000 });
-      if (resp.data && typeof resp.data === 'object' && (resp.data.email_sent !== undefined || resp.data.slack_sent !== undefined)) {
-        return resp.data;
+    const isLocal = typeof window !== 'undefined' &&
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+    // On local machine, prioritize local FastAPI backend (/notify/dispatch on port 8000)
+    // On deployed web app (Netlify), prioritize Netlify serverless function directly (/.netlify/functions/dispatch)
+    const targets = isLocal
+      ? [
+          { url: '/notify/dispatch', useApi: true },
+          { url: '/.netlify/functions/dispatch', useApi: false },
+        ]
+      : [
+          { url: '/.netlify/functions/dispatch', useApi: false },
+          { url: '/api/notify/dispatch', useApi: false },
+        ];
+
+    let lastErrorMessage = '';
+
+    for (const target of targets) {
+      try {
+        let resp;
+        if (target.useApi) {
+          resp = await api.post(target.url, {
+            digest,
+            recipient_email: recipientEmail,
+            slack_webhook_url: slackWebhookUrl,
+          }, { timeout: 25000 });
+        } else {
+          resp = await axios.post(target.url, {
+            digest,
+            recipient_email: recipientEmail,
+            slack_webhook_url: slackWebhookUrl,
+          }, {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: 25000,
+          });
+        }
+
+        if (resp.data && typeof resp.data === 'object' && (resp.data.email_sent !== undefined || resp.data.slack_sent !== undefined)) {
+          return resp.data;
+        }
+      } catch (err) {
+        lastErrorMessage = err.response?.data?.email_message || err.message;
+        console.warn(`Dispatch attempt via ${target.url} failed:`, lastErrorMessage);
       }
-    } catch (e) {
-      console.warn('/notify/dispatch primary endpoint failed, trying direct netlify function:', e.message);
     }
 
-    // 2. Try direct Netlify function path
-    try {
-      const netlifyResp = await axios.post('/.netlify/functions/dispatch', {
-        digest,
-        recipient_email: recipientEmail,
-        slack_webhook_url: slackWebhookUrl,
-      }, {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 20000,
-      });
-      if (netlifyResp.data && typeof netlifyResp.data === 'object' && (netlifyResp.data.email_sent !== undefined || netlifyResp.data.slack_sent !== undefined)) {
-        return netlifyResp.data;
-      }
-    } catch (netErr) {
-      console.warn('Netlify function direct call failed:', netErr.message);
-    }
-
-    // 3. Fallback result if network completely failed
+    // Return realistic status if all network endpoints failed
     return {
-      slack_sent: Boolean(slackWebhookUrl),
+      slack_sent: false,
       slack_message: slackWebhookUrl
-        ? 'Slack message posted to webhook channel.'
+        ? 'Could not deliver to Slack. Please verify your destination.'
         : 'Slack webhook URL was not supplied.',
-      email_sent: Boolean(recipientEmail),
+      email_sent: false,
       email_message: recipientEmail
-        ? `Digest sent to your ${recipientEmail}.`
+        ? (lastErrorMessage ? `Email delivery issue: ${lastErrorMessage}` : 'Email dispatcher was unreachable.')
         : 'Recipient email was not supplied.',
       timestamp: new Date().toISOString(),
     };
