@@ -5,5 +5,8 @@
   "scripts": {
     "build": "npm --prefix frontend run build",
     "dev": "npm --prefix frontend run dev"
+  },
+  "dependencies": {
+    "nodemailer": "^10.6.0"
   }
 }

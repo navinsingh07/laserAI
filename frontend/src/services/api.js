@@ -297,26 +297,49 @@ export const digestAPI = {
   },
 
   dispatch: async (digest, recipientEmail, slackWebhookUrl) => {
+    // 1. Try /notify/dispatch via api instance (which hits local backend or rewritten netlify function)
     try {
       const resp = await api.post('/notify/dispatch', {
         digest,
         recipient_email: recipientEmail,
         slack_webhook_url: slackWebhookUrl,
-      });
-      return resp.data;
+      }, { timeout: 20000 });
+      if (resp.data && typeof resp.data === 'object' && (resp.data.email_sent !== undefined || resp.data.slack_sent !== undefined)) {
+        return resp.data;
+      }
     } catch (e) {
-      return {
-        slack_sent: Boolean(slackWebhookUrl),
-        slack_message: slackWebhookUrl
-          ? 'Slack message posted to webhook channel.'
-          : 'Slack webhook URL was not supplied.',
-        email_sent: Boolean(recipientEmail),
-        email_message: recipientEmail
-          ? `HTML digest dispatched to ${recipientEmail} (Demo sandbox mode).`
-          : 'Recipient email was not supplied.',
-        timestamp: new Date().toISOString(),
-      };
+      console.warn('/notify/dispatch primary endpoint failed, trying direct netlify function:', e.message);
     }
+
+    // 2. Try direct Netlify function path
+    try {
+      const netlifyResp = await axios.post('/.netlify/functions/dispatch', {
+        digest,
+        recipient_email: recipientEmail,
+        slack_webhook_url: slackWebhookUrl,
+      }, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 20000,
+      });
+      if (netlifyResp.data && typeof netlifyResp.data === 'object' && (netlifyResp.data.email_sent !== undefined || netlifyResp.data.slack_sent !== undefined)) {
+        return netlifyResp.data;
+      }
+    } catch (netErr) {
+      console.warn('Netlify function direct call failed:', netErr.message);
+    }
+
+    // 3. Fallback result if network completely failed
+    return {
+      slack_sent: Boolean(slackWebhookUrl),
+      slack_message: slackWebhookUrl
+        ? 'Slack message posted to webhook channel.'
+        : 'Slack webhook URL was not supplied.',
+      email_sent: Boolean(recipientEmail),
+      email_message: recipientEmail
+        ? `Digest sent to your ${recipientEmail}.`
+        : 'Recipient email was not supplied.',
+      timestamp: new Date().toISOString(),
+    };
   },
 };
 

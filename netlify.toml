@@ -3,6 +3,14 @@
   publish = "dist"
   command = "npm run build"
 
+[functions]
+  directory = "netlify/functions"
+
+[[redirects]]
+  from = "/api/notify/dispatch"
+  to = "/.netlify/functions/dispatch"
+  status = 200
+
 [[redirects]]
   from = "/api/*"
   to = "/404.html"
