@@ -50,7 +50,7 @@ export default function NotificationModal({ isOpen, onClose, user, onSave }) {
           <div className="form-group">
             <label>
               <Mail size={13} style={{ display: 'inline', marginRight: 6 }} />
-              Digest Notification Email
+              Email
             </label>
             <input
               type="email"

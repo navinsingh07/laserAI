@@ -114,6 +114,31 @@ export const authAPI = {
 };
 
 export const feedbackAPI = {
+  uploadDataset: async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const resp = await api.post('/feedback/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return resp.data;
+  },
+
+  resetDataset: async () => {
+    const resp = await api.post('/feedback/reset');
+    return resp.data;
+  },
+
+  getDatasetInfo: async () => {
+    try {
+      const resp = await api.get('/feedback/dataset-info');
+      return resp.data;
+    } catch (e) {
+      return { is_custom: false, filename: 'Connected Google Sheet', total_rows: 150 };
+    }
+  },
+
   getRawFeedback: async (role = null, sheetUrl = '') => {
     try {
       const params = {};
@@ -403,15 +428,14 @@ function getFallbackDigest(role) {
 }
 
 function getFallbackRawFeedback(role) {
+  const engRegex = /\b(504|gateway|timeout|crash|uikit|safari|firefox|memory leak|oom|freeze|disconnect|websocket|cache|redis|api|sync|oauth|webhook|jira|github|zapier|lag|slow|load time|export|upload|constraint|recursion|unresponsive|exception|bug|error|glitch|tab|white flash|progress bar|render|stalls|fails)\b/i;
+  const salesRegex = /\b(sso|okta|saml|procurement|enterprise|deal|contract|pricing|plan|seat|tier|folder|permission|compliance|audit|client|buyer|sales|objection|competitor|quote|license|invoice|password|guest|view-only|agency|prospect|contractor|infosec|access control|annual)\b/i;
+
   if (role === 'Engineers') {
-    return feedbackDataset.filter(
-      (r) => r.department_tag === 'Engineering' || ['Performance/Bugs', 'Integrations'].includes(r.product_area)
-    );
+    return feedbackDataset.filter((r) => engRegex.test(r.feedback_text));
   }
   if (role === 'Sales') {
-    return feedbackDataset.filter(
-      (r) => r.department_tag === 'Sales' || ['Security/SSO', 'Pricing/Plans'].includes(r.product_area)
-    );
+    return feedbackDataset.filter((r) => salesRegex.test(r.feedback_text));
   }
   // Founder and PMs see ALL 150 reviews across the entire product
   return feedbackDataset;

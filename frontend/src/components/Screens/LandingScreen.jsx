@@ -1731,7 +1731,7 @@ export default function LandingScreen({ onStartDemo }) {
                 </div>
 
                 <h3 className="text-lg font-bold text-slate-900 mb-2">
-                  Laser AI (Gemini 2.5)
+                  Done by Laser AI
                 </h3>
 
                 <p className="text-xs text-slate-600 leading-relaxed mb-4">

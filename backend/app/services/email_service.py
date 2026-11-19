@@ -180,54 +180,70 @@ class EmailService:
         return html
 
     async def send_email(self, recipient_email: str, digest: RoleDigest) -> Tuple[bool, str]:
-        """Dispatches HTML email via Gmail SMTP or Resend API, with simulation fallback."""
-        if not recipient_email:
+        """Dispatches HTML email via Resend API or Gmail SMTP, with simulation fallback."""
+        if not recipient_email or not recipient_email.strip():
             return False, "Recipient email address not provided."
 
+        clean_recipient = recipient_email.strip()
         html_content = self.render_html_digest(digest)
-        subject = f"🎯 Laser AI — {digest.role.value} Digest ({digest.generated_at})"
+        subject = f"🎯 Laser AI — {digest.role.value} Product Digest ({digest.generated_at})"
 
-        # 1. Try Resend SDK / REST API if configured
-        if settings.RESEND_API_KEY:
+        # 1. Try Resend REST API if configured
+        if settings.RESEND_API_KEY and settings.RESEND_API_KEY.strip():
             try:
-                async with httpx.AsyncClient(timeout=10.0) as client:
+                from_email = settings.RESEND_FROM_EMAIL.strip() if settings.RESEND_FROM_EMAIL else "Laser AI <onboarding@resend.dev>"
+                async with httpx.AsyncClient(timeout=15.0) as client:
                     resp = await client.post(
                         "https://api.resend.com/emails",
                         headers={
-                            "Authorization": f"Bearer {settings.RESEND_API_KEY}",
+                            "Authorization": f"Bearer {settings.RESEND_API_KEY.strip()}",
                             "Content-Type": "application/json"
                         },
                         json={
-                            "from": settings.RESEND_FROM_EMAIL,
-                            "to": [recipient_email],
+                            "from": from_email,
+                            "to": [clean_recipient],
                             "subject": subject,
                             "html": html_content
                         }
                     )
                     if resp.status_code in (200, 201):
-                        return True, f"Digest sent to {recipient_email} via Resend."
+                        data = resp.json()
+                        email_id = data.get("id", "ok")
+                        return True, f"Digest sent to your {clean_recipient}."
+                    else:
+                        err_text = resp.text
+                        try:
+                            err_json = resp.json()
+                            err_text = err_json.get("message", err_text)
+                        except Exception:
+                            pass
+                        print(f"[EmailService] Resend API error ({resp.status_code}): {err_text}")
+                        return False, f"Resend error: {err_text}"
             except Exception as e:
-                print(f"[EmailService] Resend dispatch failed ({e}), checking SMTP...")
+                print(f"[EmailService] Resend dispatch exception: {e}")
+                return False, f"Resend connection failed: {str(e)}"
 
         # 2. Try Gmail SMTP if credentials configured
         if settings.SMTP_USER and settings.SMTP_PASS:
             try:
+                smtp_user = settings.SMTP_USER.strip()
+                smtp_pass = settings.SMTP_PASS.replace(" ", "").strip()
                 msg = MIMEMultipart("alternative")
                 msg["Subject"] = subject
-                msg["From"] = settings.SMTP_USER
-                msg["To"] = recipient_email
+                msg["From"] = f"Laser AI <{smtp_user}>"
+                msg["To"] = clean_recipient
                 msg.attach(MIMEText(digest.executive_summary, "plain"))
                 msg.attach(MIMEText(html_content, "html"))
 
                 with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
                     server.starttls()
-                    server.login(settings.SMTP_USER, settings.SMTP_PASS)
-                    server.sendmail(settings.SMTP_USER, recipient_email, msg.as_string())
+                    server.login(smtp_user, smtp_pass)
+                    server.sendmail(smtp_user, clean_recipient, msg.as_string())
 
-                return True, f"Digest email dispatched via Gmail SMTP to {recipient_email}."
+                return True, f"Digest sent to your {clean_recipient}."
             except Exception as e:
                 return False, f"Gmail SMTP failed: {str(e)}"
 
-        return True, f"Email delivered to {recipient_email} (Demo Sandbox Mode). HTML email rendered successfully."
+        return True, f"Email delivered to {clean_recipient} (Demo Sandbox Mode: add RESEND_API_KEY in backend/.env for live dispatch)."
 
 email_service = EmailService()

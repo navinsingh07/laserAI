@@ -26,7 +26,8 @@ class Settings:
     RESEND_API_KEY: str = os.getenv("RESEND_API_KEY", "")
     RESEND_FROM_EMAIL: str = os.getenv("RESEND_FROM_EMAIL", "Laser AI <onboarding@resend.dev>")
 
-    # Slack Default
+    # Slack Configuration
     DEFAULT_SLACK_WEBHOOK: str = os.getenv("DEFAULT_SLACK_WEBHOOK", "")
+    SLACK_BOT_TOKEN: str = os.getenv("SLACK_BOT_TOKEN", "")
 
 settings = Settings()

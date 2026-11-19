@@ -25,6 +25,11 @@ export default function App() {
   const [loadingDigest, setLoadingDigest] = useState(false);
   const [dispatchResult, setDispatchResult] = useState(null);
   const [dispatching, setDispatching] = useState(false);
+  const [datasetInfo, setDatasetInfo] = useState({
+    isCustom: false,
+    filename: 'Connected Google Sheet',
+    totalRows: 150,
+  });
 
   // Initialize data on mount
   useEffect(() => {
@@ -34,12 +39,14 @@ export default function App() {
         const persona = PERSONAS[u.role] || PERSONAS['Founders'] || PERSONAS['Founder'];
         const fullUser = { ...u, name: u.name || persona?.name || 'Alex Morgan', email: u.email || persona?.email || 'alex@laserai.demo' };
         setUser(fullUser);
-        const [raw, dig] = await Promise.all([
+        const [raw, dig, info] = await Promise.all([
           feedbackAPI.getRawFeedback(u.role),
           digestAPI.generateDigest(u.role),
+          feedbackAPI.getDatasetInfo(),
         ]);
         setRawFeedback(raw);
         setDigest(dig);
+        if (info) setDatasetInfo(info);
       } catch (e) {
         console.warn('Init error:', e);
       }
@@ -51,12 +58,14 @@ export default function App() {
     setLoadingDigest(true);
     setDispatchResult(null); // reset prior dispatch result
     try {
-      const [dig, feedback] = await Promise.all([
+      const [dig, feedback, info] = await Promise.all([
         digestAPI.generateDigest(role),
         feedbackAPI.getRawFeedback(role),
+        feedbackAPI.getDatasetInfo(),
       ]);
       setDigest(dig);
       setRawFeedback(feedback);
+      if (info) setDatasetInfo(info);
     } catch (e) {
       console.error('Error loading role digest:', e);
     } finally {
@@ -64,9 +73,50 @@ export default function App() {
     }
   };
 
-  // Screen 1: "Try Demo Workspace" -> Screen 2
+  const handleUploadDataset = async (file) => {
+    setLoadingDigest(true);
+    try {
+      const res = await feedbackAPI.uploadDataset(file);
+      setDatasetInfo({
+        isCustom: true,
+        filename: file.name,
+        totalRows: res.total_rows || 0,
+      });
+      await loadRoleData(user.role);
+      return res;
+    } catch (e) {
+      console.error('Failed to upload dataset:', e);
+      alert('Error uploading file. Please ensure it is a valid CSV or Excel (.xlsx, .xls) file.');
+    } finally {
+      setLoadingDigest(false);
+    }
+  };
+
+  const handleResetDataset = async () => {
+    setLoadingDigest(true);
+    try {
+      await feedbackAPI.resetDataset();
+      setDatasetInfo({
+        isCustom: false,
+        filename: 'Connected Google Sheet',
+        totalRows: 150,
+      });
+      await loadRoleData(user.role);
+    } catch (e) {
+      console.error('Failed to reset dataset:', e);
+    } finally {
+      setLoadingDigest(false);
+    }
+  };
+
+  // Screen 1: "Sign up" -> Screen 3 (Directly to Signup / Onboarding, no Google Auth)
   const handleStartDemo = () => {
-    setCurrentScreen(2);
+    setUser((prev) => ({
+      ...prev,
+      name: '',
+      email: '',
+    }));
+    setCurrentScreen(3);
   };
 
   // Screen 1: Quick-start as a specific persona directly -> Screen 4
@@ -102,9 +152,34 @@ export default function App() {
       authenticated: true,
     };
     setUser(updated);
-    await authAPI.onboarding(formData);
-    await loadRoleData(formData.role);
-    setCurrentScreen(4);
+    setLoadingDigest(true);
+    try {
+      await authAPI.onboarding(formData);
+
+      if (formData.customFile) {
+        const uploadRes = await feedbackAPI.uploadDataset(formData.customFile);
+        setDatasetInfo({
+          isCustom: true,
+          filename: formData.customFile.name,
+          totalRows: uploadRes.total_rows || 0,
+        });
+      } else {
+        await feedbackAPI.resetDataset();
+        setDatasetInfo({
+          isCustom: false,
+          filename: 'Connected Google Sheet',
+          totalRows: 150,
+        });
+      }
+
+      await loadRoleData(formData.role);
+      setCurrentScreen(4);
+    } catch (e) {
+      console.error('Error completing onboarding:', e);
+      setCurrentScreen(4);
+    } finally {
+      setLoadingDigest(false);
+    }
   };
 
   // Simulator Role Switcher (Screen 4 & Screen 5)
@@ -158,7 +233,9 @@ export default function App() {
       {currentScreen === 3 && (
         <OnboardingScreen
           user={user}
+          loadingDigest={loadingDigest}
           onCompleteOnboarding={handleCompleteOnboarding}
+          onBackToLanding={() => setCurrentScreen(1)}
         />
       )}
 
@@ -168,6 +245,9 @@ export default function App() {
           digest={digest}
           rawFeedback={rawFeedback}
           loadingDigest={loadingDigest}
+          datasetInfo={datasetInfo}
+          onUploadDataset={handleUploadDataset}
+          onResetDataset={handleResetDataset}
           onSwitchRoleToOnboarding={() => setCurrentScreen(3)}
           onRegenerate={() => loadRoleData(user.role)}
           onDispatch={handleDispatch}

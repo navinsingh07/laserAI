@@ -24,7 +24,9 @@ import {
   ShieldCheck,
   Building2,
   Clock,
-  ArrowRight
+  ArrowRight,
+  UploadCloud,
+  RotateCcw
 } from 'lucide-react';
 
 export default function DashboardScreen({
@@ -32,6 +34,9 @@ export default function DashboardScreen({
   digest,
   rawFeedback,
   loadingDigest,
+  datasetInfo,
+  onUploadDataset,
+  onResetDataset,
   onSwitchRoleToOnboarding,
   onRegenerate,
   onGoToPreview,
@@ -45,6 +50,31 @@ export default function DashboardScreen({
   const [previewTab, setPreviewTab] = useState('email'); // 'email' | 'slack'
   const [customEmail, setCustomEmail] = useState(user.email || '');
   const [customWebhook, setCustomWebhook] = useState(user.slack_webhook_url || '');
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [showDispatchModal, setShowDispatchModal] = useState(false);
+  const fileInputRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (dispatching) {
+      setShowDispatchModal(true);
+    }
+  }, [dispatching]);
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingFile(true);
+    try {
+      if (onUploadDataset) {
+        await onUploadDataset(file);
+      }
+    } finally {
+      setUploadingFile(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
 
   React.useEffect(() => {
     setCustomEmail(user.email || '');
@@ -52,6 +82,7 @@ export default function DashboardScreen({
   }, [user]);
 
   const handleSendNow = () => {
+    setShowDispatchModal(true);
     if (onDispatch) {
       onDispatch({
         recipientEmail: customEmail,
@@ -528,39 +559,223 @@ export default function DashboardScreen({
 
   const activeRoleData = roleData[role] || roleData.Founder;
 
-  // Role-Based Review Filtering for Raw Rows View
-  const filteredRaw = (rawFeedback || []).filter((item) => {
-    if (rawScopeMode === 'scoped') {
-      if (role === 'Engineers') {
-        const isEng = item.department_tag === 'Engineering' || ['Performance/Bugs', 'Integrations'].includes(item.product_area || item.category);
-        if (!isEng) return false;
-      } else if (role === 'Sales') {
-        const isSales = item.department_tag === 'Sales' || ['Security/SSO', 'Pricing/Plans'].includes(item.product_area || item.category);
-        if (!isSales) return false;
+  // Single-Pass AI Synthesis & Filtered Outputs (Done by Laser AI)
+  const synthesisBullets = (digest?.ai_summary_bullets && digest.ai_summary_bullets.length > 0)
+    ? digest.ai_summary_bullets
+    : activeRoleData.synthesis;
+
+  const dynamicThemes = (digest?.top_themes && digest.top_themes.length > 0)
+    ? digest.top_themes
+    : activeRoleData.insights;
+
+  const totalReviewsCount = digest?.matched_role_rows_count !== undefined
+    ? digest.matched_role_rows_count
+    : (role === 'Engineers' ? 49 : role === 'Sales' ? 29 : (rawFeedback?.length || 150));
+
+  const totalSheetRowsCount = digest?.total_sheet_rows || datasetInfo?.totalRows || rawFeedback?.length || 150;
+
+  const dynamicKpis = [
+    {
+      label: 'Total Feedback Analyzed',
+      value: `${totalReviewsCount} Reviews`,
+      change: `${totalReviewsCount} of ${totalSheetRowsCount} Scoped`,
+      changeType: 'positive',
+      subtext: `Done by Laser AI (${totalSheetRowsCount} Total Sheet Rows)`
+    },
+    {
+      label: 'Overall User Sentiment',
+      value: digest?.sentiment?.positive_pct !== undefined
+        ? `${Math.round(digest.sentiment.positive_pct)}% Positive`
+        : activeRoleData.kpis[1].value,
+      change: '+12% vs last week',
+      changeType: 'positive',
+      subtext: digest?.sentiment?.overall || activeRoleData.kpis[1].subtext
+    },
+    {
+      label: 'Top Recurring Theme',
+      value: dynamicThemes[0]?.theme || activeRoleData.kpis[2].value,
+      change: dynamicThemes[0]?.mentions ? `${dynamicThemes[0].mentions} mentions` : activeRoleData.kpis[2].change,
+      changeType: 'neutral',
+      subtext: 'Done by Laser AI semantic clustering'
+    }
+  ];
+
+  // Dynamic Sentiment Chart Segments
+  const sentimentSegments = digest?.sentiment?.positive_pct !== undefined
+    ? [
+      {
+        label: 'Positive',
+        count: Math.round(totalReviewsCount * (digest.sentiment.positive_pct / 100)),
+        pct: Math.round(digest.sentiment.positive_pct),
+        color: 'bg-emerald-500',
+        textColor: 'text-emerald-700',
+        bgSoft: 'bg-emerald-50'
+      },
+      {
+        label: 'Neutral',
+        count: Math.round(totalReviewsCount * (digest.sentiment.neutral_pct / 100)),
+        pct: Math.round(digest.sentiment.neutral_pct),
+        color: 'bg-slate-400',
+        textColor: 'text-slate-700',
+        bgSoft: 'bg-slate-100'
+      },
+      {
+        label: 'Negative',
+        count: Math.round(totalReviewsCount * (digest.sentiment.negative_pct / 100)),
+        pct: Math.round(digest.sentiment.negative_pct),
+        color: 'bg-rose-500',
+        textColor: 'text-rose-700',
+        bgSoft: 'bg-rose-50'
       }
+    ]
+    : activeRoleData.sentimentChart.segments;
+
+  // Role-Based Review Filtering for Raw Rows View (Done by Laser AI)
+  const baseRawRows = (rawScopeMode === 'scoped' && digest?.filtered_reviews && digest.filtered_reviews.length > 0)
+    ? digest.filtered_reviews
+    : (rawFeedback || []);
+
+  const filteredRaw = baseRawRows.filter((item) => {
+    if (rawScopeMode === 'scoped' && (!digest?.filtered_reviews || digest.filtered_reviews.length === 0)) {
+      const engRegex = /\b(504|gateway|timeout|crash|uikit|safari|firefox|memory leak|oom|freeze|disconnect|websocket|cache|redis|api|sync|oauth|webhook|jira|github|zapier|lag|slow|load time|export|upload|constraint|recursion|unresponsive|exception|bug|error|glitch|tab|white flash|progress bar|render|stalls|fails)\b/i;
+      const salesRegex = /\b(sso|okta|saml|procurement|enterprise|deal|contract|pricing|plan|seat|tier|folder|permission|compliance|audit|client|buyer|sales|objection|competitor|quote|license|invoice|password|guest|view-only|agency|prospect|contractor|infosec|access control|annual)\b/i;
+      if (role === 'Engineers' && !engRegex.test(item.feedback_text)) return false;
+      if (role === 'Sales' && !salesRegex.test(item.feedback_text)) return false;
     }
     const q = searchQuery.toLowerCase();
     const textMatch = (item.feedback_text || '').toLowerCase().includes(q);
     const idMatch = (item.review_id || item.id || '').toLowerCase().includes(q);
     const userMatch = (item.user_name || item.customer_id || '').toLowerCase().includes(q);
-    const areaMatch = (item.product_area || item.category || '').toLowerCase().includes(q);
-    const deptMatch = (item.department_tag || '').toLowerCase().includes(q);
+    const tierMatch = (item.company_tier || item.customer_tier || '').toLowerCase().includes(q);
 
-    return textMatch || idMatch || userMatch || areaMatch || deptMatch;
+    return textMatch || idMatch || userMatch || tierMatch;
   });
 
   return (
-    <div className="h-screen w-full bg-[#F8FAFC] text-slate-900 font-sans selection:bg-indigo-600 selection:text-white flex flex-col md:flex-row overflow-hidden">
+    <div className="h-screen w-full bg-[#F8FAFC] text-slate-900 font-sans selection:bg-indigo-600 selection:text-white flex flex-col md:flex-row overflow-hidden relative">
+
+      {/* ========================================================================= */}
+      {/* CENTERED AI LOADING OVERLAY */}
+      {/* ========================================================================= */}
+        {(loadingDigest || uploadingFile) && (
+          <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-slate-100 flex flex-col items-center text-center space-y-4">
+              <div className="relative flex items-center justify-center">
+                <div className="w-16 h-16 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg">
+                  <Zap size={30} className="fill-current animate-bounce" />
+                </div>
+                <div className="absolute -inset-2.5 rounded-3xl border-3 border-indigo-200 border-t-indigo-600 animate-spin" />
+              </div>
+              <div className="space-y-1.5 pt-1">
+                <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
+                  Wait... Laser AI is working
+                </h3>
+                <p className="text-xs font-bold text-indigo-600 animate-pulse">
+                  {uploadingFile ? 'Ingesting uploaded CSV / Excel with Gemini...' : 'Fetching real-time data...'}
+                </p>
+                <p className="text-[11px] text-slate-400 leading-relaxed pt-1">
+                  Ingesting {totalSheetRowsCount} customer reviews & synthesizing role intelligence
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* EMAIL DISPATCH LOADING & SUCCESS OVERLAY MODAL */}
+        {/* ========================================================================= */}
+        {showDispatchModal && (
+          <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+            <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-slate-100 flex flex-col items-center text-center space-y-4">
+              {dispatching ? (
+                <>
+                  {/* 1. SENDING STATE: Laser AI Logo with active loading rings */}
+                  <div className="relative flex items-center justify-center">
+                    <div className="w-16 h-16 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-600/30">
+                      <Zap size={30} className="fill-current animate-bounce" />
+                    </div>
+                    <div className="absolute -inset-2.5 rounded-3xl border-3 border-indigo-200 border-t-indigo-600 animate-spin" />
+                  </div>
+                  <div className="space-y-1.5 pt-1">
+                    <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
+                      Sending {role} Digest...
+                    </h3>
+                    <p className="text-xs font-bold text-indigo-600 animate-pulse">
+                      Laser AI is delivering your email
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      Dispatching live digest to <span className="font-semibold text-slate-600">{customEmail}</span>
+                    </p>
+                  </div>
+                </>
+              ) : dispatchResult?.email_sent || dispatchResult?.slack_sent ? (
+                <>
+                  {/* 2. SUCCESS STATE: Animated transition into vibrant green checkmark */}
+                  <div className="relative flex items-center justify-center">
+                    <div className="w-16 h-16 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-500/30 transition-all duration-500 scale-105">
+                      <CheckCircle2 size={34} className="stroke-[2.5]" />
+                    </div>
+                    <div className="absolute -inset-2 rounded-3xl border-2 border-emerald-300 animate-ping opacity-35" />
+                  </div>
+                  <div className="space-y-2 pt-1">
+                    <h3 className="text-base font-black text-slate-900 tracking-tight">
+                      Digest Sent Successfully!
+                    </h3>
+                    <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-xs text-emerald-950 font-semibold leading-relaxed">
+                      Digest sent to your <span className="underline font-bold text-emerald-900">{customEmail}</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Check your Inbox and Spam / Promotions folder for the email from <span className="font-semibold text-slate-600">Laser AI</span>.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowDispatchModal(false)}
+                    className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-slate-900 hover:bg-slate-800 text-white transition-all shadow-sm cursor-pointer mt-1"
+                  >
+                    Got It
+                  </button>
+                </>
+              ) : (
+                <>
+                  {/* 3. ERROR STATE */}
+                  <div className="w-16 h-16 rounded-2xl bg-rose-500 text-white flex items-center justify-center shadow-lg shadow-rose-500/20">
+                    <AlertCircle size={32} />
+                  </div>
+                  <div className="space-y-1.5 pt-1">
+                    <h3 className="text-base font-extrabold text-slate-900">
+                      Delivery Issue
+                    </h3>
+                    <p className="text-xs text-rose-600 font-medium">
+                      {dispatchResult?.email_message || 'Could not deliver email. Please try again.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowDispatchModal(false)}
+                    className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-slate-900 hover:bg-slate-800 text-white transition-all shadow-sm cursor-pointer mt-1"
+                  >
+                    Close
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
       {/* ========================================================================= */}
       {/* MINIMAL RIGID LEFT SIDEBAR: Pinned firmly in view, only right content scrolls */}
       {/* ========================================================================= */}
       <aside className="w-full md:w-64 h-full bg-white border-r border-slate-200/90 flex flex-col justify-between shrink-0 select-none overflow-hidden">
         <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
-          {/* Logo Brand Header */}
+          {/* Logo Brand Header: Clickable, navigates directly to Insights Dashboard */}
           <div className="h-16 px-6 border-b border-slate-100 flex items-center justify-between shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-black shadow-xs">
+            <button
+              onClick={() => setActiveNav('insights')}
+              className="flex items-center gap-3 text-left hover:opacity-80 transition-opacity cursor-pointer group"
+              title="Go to Insights Dashboard"
+            >
+              <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-black shadow-xs group-hover:scale-105 transition-transform">
                 <Zap size={18} className="fill-current" />
               </div>
               <div>
@@ -571,94 +786,159 @@ export default function DashboardScreen({
                   Feedback Intelligence
                 </span>
               </div>
-            </div>
+            </button>
           </div>
 
           {/* Minimal 3 Navigation Items */}
-          <div className="p-4 space-y-1.5 flex-1">
-            <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-              Workspace Menu
+            <div className="p-4 space-y-1.5">
+              <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Workspace Menu
+              </div>
+
+              {/* Nav Item 1: Insights Dashboard */}
+              <button
+                onClick={() => setActiveNav('insights')}
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${activeNav === 'insights'
+                    ? 'bg-indigo-50 text-indigo-700 shadow-xs border border-indigo-100 font-bold'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  }`}
+              >
+                <LayoutDashboard size={16} className={activeNav === 'insights' ? 'text-indigo-600' : 'text-slate-400'} />
+                <span>Insights Dashboard</span>
+              </button>
+
+              {/* Nav Item 2: Raw Google Sheet (Dynamic Rows) */}
+              <button
+                onClick={() => setActiveNav('raw')}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${activeNav === 'raw'
+                    ? 'bg-indigo-50 text-indigo-700 shadow-xs border border-indigo-100 font-bold'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  }`}
+              >
+                <div className="flex items-center gap-3">
+                  <FileSpreadsheet size={16} className={activeNav === 'raw' ? 'text-indigo-600' : 'text-slate-400'} />
+                  <span>Raw Google Sheet</span>
+                </div>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                  {totalSheetRowsCount} Rows
+                </span>
+              </button>
+
+              {/* Nav Item 3: Email & Slack Preview */}
+              <button
+                onClick={() => setActiveNav('preview')}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${activeNav === 'preview'
+                    ? 'bg-indigo-50 text-indigo-700 shadow-xs border border-indigo-100 font-bold'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Send size={16} className={activeNav === 'preview' ? 'text-indigo-600' : 'text-slate-400'} />
+                  <span>Email & Slack Preview</span>
+                </div>
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${activeNav === 'preview'
+                    ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
+                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                  }`}>
+                  Live
+                </span>
+              </button>
             </div>
 
-            {/* Nav Item 1: Insights Dashboard */}
-            <button
-              onClick={() => setActiveNav('insights')}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                activeNav === 'insights'
-                  ? 'bg-indigo-50 text-indigo-700 shadow-xs border border-indigo-100 font-bold'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-              }`}
-            >
-              <LayoutDashboard size={16} className={activeNav === 'insights' ? 'text-indigo-600' : 'text-slate-400'} />
-              <span>Insights Dashboard</span>
-            </button>
-
-            {/* Nav Item 2: Raw Google Sheet (150 Rows) */}
-            <button
-              onClick={() => setActiveNav('raw')}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                activeNav === 'raw'
-                  ? 'bg-indigo-50 text-indigo-700 shadow-xs border border-indigo-100 font-bold'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <FileSpreadsheet size={16} className={activeNav === 'raw' ? 'text-indigo-600' : 'text-slate-400'} />
-                <span>Raw Google Sheet</span>
+            {/* DATASET SOURCE SECTION: Change CSV or Excel file */}
+            <div className="px-4 py-3 border-t border-slate-100 space-y-2">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Dataset Source
+                </span>
+                {datasetInfo?.isCustom ? (
+                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide bg-amber-50 text-amber-700 border border-amber-200">
+                    Custom File
+                  </span>
+                ) : (
+                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    Google Sheet
+                  </span>
+                )}
               </div>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
-                150 Rows
-              </span>
-            </button>
 
-            {/* Nav Item 3: Email & Slack Preview */}
-            <button
-              onClick={() => setActiveNav('preview')}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                activeNav === 'preview'
-                  ? 'bg-indigo-50 text-indigo-700 shadow-xs border border-indigo-100 font-bold'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <Send size={16} className={activeNav === 'preview' ? 'text-indigo-600' : 'text-slate-400'} />
-                <span>Email & Slack Preview</span>
+              {/* Active Source Card */}
+              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
+                <div className="flex items-start gap-2">
+                  <div className="w-6 h-6 rounded-md bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 mt-0.5">
+                    <FileSpreadsheet size={13} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-bold text-slate-800 truncate" title={datasetInfo?.filename || 'Connected Google Sheet'}>
+                      {datasetInfo?.filename || 'Connected Google Sheet'}
+                    </div>
+                    <div className="text-[10px] text-slate-500 font-medium">
+                      {totalSheetRowsCount} qualitative reviews
+                    </div>
+                  </div>
+                </div>
+
+                {/* Hidden File Input for CSV / Excel */}
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  accept=".csv, .xlsx, .xls, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
+                  className="hidden"
+                />
+
+                <div className="flex flex-col gap-1.5 pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingFile || loadingDigest}
+                    className="w-full py-1.5 px-2.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 hover:text-slate-900 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                    title="Upload CSV or Excel sheet"
+                  >
+                    <UploadCloud size={13} className="text-indigo-600" />
+                    <span>{uploadingFile ? 'Analyzing...' : 'Change CSV / Excel'}</span>
+                  </button>
+
+                  {datasetInfo?.isCustom && (
+                    <button
+                      type="button"
+                      onClick={onResetDataset}
+                      disabled={uploadingFile || loadingDigest}
+                      className="w-full py-1 px-2 rounded-lg text-[10px] font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-100 flex items-center justify-center gap-1 transition-colors"
+                    >
+                      <RotateCcw size={11} />
+                      <span>Reset to Default Sheet</span>
+                    </button>
+                  )}
+                </div>
               </div>
-              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
-                activeNav === 'preview'
-                  ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
-                  : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-              }`}>
-                Live
-              </span>
+            </div>
+          </div>
+
+          {/* Bottom Profile Card with Actual User Name & Switch Role Button (Always visible) */}
+          <div className="p-4 border-t border-slate-200/80 bg-slate-50/60 space-y-3 shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-indigo-600 text-white font-bold text-xs flex items-center justify-center shadow-xs shrink-0">
+                {userInitials}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-bold text-slate-900 truncate">
+                  {userDisplayName}
+                </div>
+                <div className="text-[11px] font-semibold text-indigo-600">
+                  {role}
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={onSwitchRoleToOnboarding}
+              className="w-full py-1.5 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700 flex items-center justify-center gap-1.5 transition-all shadow-xs"
+            >
+              <Settings size={13} className="text-slate-400" />
+              <span>Switch Role</span>
             </button>
           </div>
-        </div>
-
-        {/* Bottom Profile Card with Actual User Name & Switch Role Button (Always visible) */}
-        <div className="p-4 border-t border-slate-200/80 bg-slate-50/60 space-y-3 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-indigo-600 text-white font-bold text-xs flex items-center justify-center shadow-xs shrink-0">
-              {userInitials}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-xs font-bold text-slate-900 truncate">
-                {userDisplayName}
-              </div>
-              <div className="text-[11px] font-semibold text-indigo-600">
-                {role}
-              </div>
-            </div>
-          </div>
-
-          <button
-            onClick={onSwitchRoleToOnboarding}
-            className="w-full py-1.5 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700 flex items-center justify-center gap-1.5 transition-all shadow-xs"
-          >
-            <Settings size={13} className="text-slate-400" />
-            <span>Switch Role</span>
-          </button>
-        </div>
       </aside>
 
       {/* ========================================================================= */}
@@ -666,7 +946,7 @@ export default function DashboardScreen({
       {/* ========================================================================= */}
       <main className="flex-1 h-full flex flex-col bg-[#F8FAFC] overflow-y-auto min-w-0">
 
-        {/* Top Header Bar */}
+        {/* Top Header Bar (Clean breadcrumb & status, no crowded action buttons) */}
         <header className="h-16 px-6 lg:px-8 border-b border-slate-200/80 bg-white flex items-center justify-between gap-4 sticky top-0 z-30">
           <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
             <span>Home</span>
@@ -676,37 +956,17 @@ export default function DashboardScreen({
             <span className="font-bold text-slate-900">{role} Scope</span>
           </div>
 
-          <div className="flex items-center gap-3">
-            <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-              <CheckCircle2 size={12} />
-              <span>{activeRoleData.activeCount}</span>
+          <div className="flex items-center gap-2 text-xs text-slate-400">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span className="font-medium text-slate-500 hidden sm:inline">
+              {datasetInfo?.isCustom ? `Dataset: ${datasetInfo.filename}` : 'Google Sheets Connected'}
             </span>
-
-            <button
-              onClick={onRegenerate}
-              className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-colors"
-              title="Regenerate Analysis"
-            >
-              <RefreshCw size={14} className={loadingDigest ? 'animate-spin' : ''} />
-            </button>
-
-            <button
-              onClick={() => setActiveNav('preview')}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 ${
-                activeNav === 'preview'
-                  ? 'bg-indigo-700 text-white'
-                  : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-              }`}
-            >
-              <Send size={13} />
-              <span>Dispatch Digest</span>
-            </button>
           </div>
         </header>
 
-        {/* Sub-Header Title Bar */}
+        {/* Sub-Header Title Bar (Includes Relocated Dispatch Digest & Refresh Buttons) */}
         <div className="px-6 lg:px-8 py-5 border-b border-slate-200/70 bg-white">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200">
@@ -714,50 +974,69 @@ export default function DashboardScreen({
                 </span>
                 <span className="text-xs text-slate-400">•</span>
                 <span className="text-xs text-slate-500 font-medium">
-                  {activeNav === 'insights' && 'Pre-Connected Google Sheet Ingestion'}
-                  {activeNav === 'raw' && 'Live Raw Google Sheet Table (150 Rows)'}
+                  {activeNav === 'insights' && (datasetInfo?.isCustom ? `Analyzed: ${datasetInfo.filename}` : 'Pre-Connected Google Sheet Ingestion')}
+                  {activeNav === 'raw' && `Live Raw ${datasetInfo?.isCustom ? datasetInfo.filename : 'Google Sheet'} Table (${totalSheetRowsCount} Rows)`}
                   {activeNav === 'preview' && 'Instant Multi-Channel Dispatch'}
                 </span>
               </div>
               <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
                 {activeNav === 'insights' && activeRoleData.title}
-                {activeNav === 'raw' && 'Connected Google Sheet (150 Feedback Rows)'}
+                {activeNav === 'raw' && `${datasetInfo?.isCustom ? datasetInfo.filename : 'Connected Google Sheet'} (${totalSheetRowsCount} Feedback Rows)`}
                 {activeNav === 'preview' && 'Email & Slack Digest Preview & Dispatch'}
               </h1>
               <p className="text-xs text-slate-500 mt-0.5">
                 {activeNav === 'insights' && activeRoleData.scopeSubtitle}
-                {activeNav === 'raw' && 'Explore all 150 qualitative feedback rows ingested from Google Sheets, filtered by your active role permissions.'}
+                {activeNav === 'raw' && `Explore all ${totalSheetRowsCount} qualitative feedback rows ingested from ${datasetInfo?.isCustom ? datasetInfo.filename : 'Google Sheets'}, filtered by your active role permissions.`}
                 {activeNav === 'preview' && 'Review the live formatted email digest or Slack Block Kit message before instant dispatch to your team.'}
               </p>
             </div>
 
-            {/* View Selector Tabs when on preview screen */}
-            {activeNav === 'preview' && (
-              <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0">
-                <button
-                  onClick={() => setPreviewTab('email')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                    previewTab === 'email'
-                      ? 'bg-white text-indigo-600 shadow-xs border border-slate-200/80 font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
+            {/* Relocated Dispatch Digest, Refresh & View Selector in Below Section */}
+            <div className="flex items-center gap-3 shrink-0">
+              {activeNav === 'preview' && (
+                <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0">
+                  <button
+                    onClick={() => setPreviewTab('email')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${previewTab === 'email'
+                        ? 'bg-white text-indigo-600 shadow-xs border border-slate-200/80 font-bold'
+                        : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                  >
+                    <Mail size={13} />
+                    <span>Email Digest</span>
+                  </button>
+                  <button
+                    onClick={() => setPreviewTab('slack')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${previewTab === 'slack'
+                        ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80 font-bold'
+                        : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                  >
+                    <Slack size={13} />
+                    <span>Slack Block Kit</span>
+                  </button>
+                </div>
+              )}
+
+              <button
+                onClick={onRegenerate}
+                className="p-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all shadow-xs"
+                title="Regenerate Analysis with Laser AI"
+              >
+                <RefreshCw size={14} className={loadingDigest ? 'animate-spin text-indigo-600' : ''} />
+              </button>
+
+              <button
+                onClick={() => setActiveNav('preview')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-2 ${activeNav === 'preview'
+                    ? 'bg-indigo-700 text-white ring-2 ring-indigo-600/20'
+                    : 'bg-indigo-600 hover:bg-indigo-700 text-white'
                   }`}
-                >
-                  <Mail size={13} />
-                  <span>Email Digest</span>
-                </button>
-                <button
-                  onClick={() => setPreviewTab('slack')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                    previewTab === 'slack'
-                      ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80 font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <Slack size={13} />
-                  <span>Slack Block Kit</span>
-                </button>
-              </div>
-            )}
+              >
+                <Send size={13} />
+                <span>Dispatch Digest</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -769,18 +1048,17 @@ export default function DashboardScreen({
 
             {/* PART 1: TOP 3 KPI CARDS (PURE FEEDBACK METRICS — ZERO FINANCIAL/ARR METRICS) */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {activeRoleData.kpis.map((kpi, idx) => (
+              {dynamicKpis.map((kpi, idx) => (
                 <div
                   key={idx}
                   className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs hover:shadow-sm transition-all"
                 >
                   <div className="flex items-center justify-between text-xs font-bold text-slate-500 mb-2">
                     <span>{kpi.label}</span>
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                      kpi.changeType === 'positive' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                      kpi.changeType === 'negative' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
-                      'bg-slate-100 text-slate-700 border border-slate-200'
-                    }`}>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${kpi.changeType === 'positive' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                        kpi.changeType === 'negative' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
+                          'bg-slate-100 text-slate-700 border border-slate-200'
+                      }`}>
                       {kpi.change}
                     </span>
                   </div>
@@ -799,11 +1077,11 @@ export default function DashboardScreen({
               <div className="flex items-center gap-2 text-indigo-700 font-bold text-xs uppercase tracking-wider">
                 <Sparkles size={15} className="text-indigo-600" />
                 <span>Laser AI Executive Synthesis</span>
-                <span className="text-[10px] font-semibold text-slate-400 normal-case">• Powered by Gemini 2.5</span>
+                <span className="text-[10px] font-semibold text-slate-400 normal-case">• Done by Laser AI</span>
               </div>
 
               <div className="space-y-2.5 pt-1">
-                {activeRoleData.synthesis.map((bullet, idx) => (
+                {synthesisBullets.map((bullet, idx) => (
                   <div key={idx} className="flex items-start gap-2.5 text-xs sm:text-sm text-slate-700 leading-relaxed">
                     <span className="text-indigo-600 font-bold text-base leading-none mt-0.5">•</span>
                     <span>{bullet}</span>
@@ -829,7 +1107,7 @@ export default function DashboardScreen({
 
                 {/* Stacked Proportional Bar */}
                 <div className="w-full h-4 rounded-full overflow-hidden flex bg-slate-100 p-0.5 gap-0.5">
-                  {activeRoleData.sentimentChart.segments.map((seg, idx) => (
+                  {sentimentSegments.map((seg, idx) => (
                     <div
                       key={idx}
                       style={{ width: `${seg.pct}%` }}
@@ -841,7 +1119,7 @@ export default function DashboardScreen({
 
                 {/* Legend Cards */}
                 <div className="grid grid-cols-3 gap-2.5 pt-1">
-                  {activeRoleData.sentimentChart.segments.map((seg, idx) => (
+                  {sentimentSegments.map((seg, idx) => (
                     <div key={idx} className={`p-2.5 rounded-xl border border-slate-100 ${seg.bgSoft}`}>
                       <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 mb-1">
                         <span className={`w-2 h-2 rounded-full ${seg.color}`} />
@@ -899,16 +1177,16 @@ export default function DashboardScreen({
                     Top Grouped Themes & Direct Customer Quotes
                   </h2>
                   <p className="text-xs text-slate-500">
-                    Verbatim customer evidence categorized from the connected Google Sheet dataset.
+                    Done by Laser AI directly from un-tagged Google Sheet rows.
                   </p>
                 </div>
                 <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200">
-                  {activeRoleData.insights.length} Grouped Themes
+                  {dynamicThemes.length} Grouped Themes
                 </span>
               </div>
 
               <div className="space-y-4">
-                {activeRoleData.insights.map((item) => (
+                {dynamicThemes.map((item) => (
                   <div
                     key={item.id}
                     className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs hover:border-slate-300 transition-all space-y-4"
@@ -916,7 +1194,7 @@ export default function DashboardScreen({
                     {/* Header Row */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
                       <div className="flex items-center gap-2.5">
-                        <span className={`px-2.5 py-1 rounded-md text-[11px] font-bold border ${item.tagColor}`}>
+                        <span className={`px-2.5 py-1 rounded-md text-[11px] font-bold border ${item.tagColor || 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>
                           {item.tag}
                         </span>
                         <h3 className="text-sm sm:text-base font-bold text-slate-900">
@@ -924,7 +1202,7 @@ export default function DashboardScreen({
                         </h3>
                       </div>
                       <div className="text-xs font-semibold text-slate-500 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-100 shrink-0">
-                        {item.mentions}
+                        {item.mentions ? `${item.mentions} mentions` : 'High velocity'}
                       </div>
                     </div>
 
@@ -938,7 +1216,7 @@ export default function DashboardScreen({
                       </p>
                     </div>
 
-                    {/* 2 Real Customer Quotes */}
+                    {/* Real Customer Quotes */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
                       {item.quotes.map((q, qIdx) => (
                         <div
@@ -970,15 +1248,17 @@ export default function DashboardScreen({
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 2: RAW GOOGLE SHEET (150 ROWS) VIEW */}
+        {/* VIEW 2: RAW ROWS VIEW */}
         {/* ========================================================================= */}
         {activeNav === 'raw' && (
           <div className="p-6 lg:p-8 space-y-4 max-w-6xl">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h2 className="text-base font-bold text-slate-900">Pre-Connected Google Sheet Feedback Rows</h2>
+                <h2 className="text-base font-bold text-slate-900">
+                  {datasetInfo?.isCustom ? datasetInfo.filename : 'Pre-Connected Google Sheet'} Feedback Rows
+                </h2>
                 <p className="text-xs text-slate-500">
-                  Live 150-row master customer feedback dataset ingested into Laser AI.
+                  Live {totalSheetRowsCount}-row customer feedback dataset ingested into Laser AI.
                   {role === 'Engineers' && ' Filtered strictly to technical bugs, latency, and integration issues.'}
                   {role === 'Sales' && ' Filtered strictly to enterprise procurement, SSO, and customer objections.'}
                   {(role === 'Founders' || role === 'Founder' || role === 'PMs') && ' Full company-wide product dataset access.'}
@@ -990,19 +1270,17 @@ export default function DashboardScreen({
                 <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs font-semibold">
                   <button
                     onClick={() => setRawScopeMode('scoped')}
-                    className={`px-3 py-1 rounded-md transition-all ${
-                      rawScopeMode === 'scoped' ? 'bg-white text-indigo-600 shadow-xs font-bold' : 'text-slate-600'
-                    }`}
+                    className={`px-3 py-1 rounded-md transition-all ${rawScopeMode === 'scoped' ? 'bg-white text-indigo-600 shadow-xs font-bold' : 'text-slate-600'
+                      }`}
                   >
                     Strictly Scoped ({filteredRaw.length})
                   </button>
                   <button
                     onClick={() => setRawScopeMode('all')}
-                    className={`px-3 py-1 rounded-md transition-all ${
-                      rawScopeMode === 'all' ? 'bg-white text-indigo-600 shadow-xs font-bold' : 'text-slate-600'
-                    }`}
+                    className={`px-3 py-1 rounded-md transition-all ${rawScopeMode === 'all' ? 'bg-white text-indigo-600 shadow-xs font-bold' : 'text-slate-600'
+                      }`}
                   >
-                    All 150 Rows
+                    All {totalSheetRowsCount} Rows
                   </button>
                 </div>
               </div>
@@ -1029,11 +1307,10 @@ export default function DashboardScreen({
                       <th className="p-3">Review ID</th>
                       <th className="p-3">Date</th>
                       <th className="p-3">User Name</th>
-                      <th className="p-3">Tier</th>
-                      <th className="p-3">Product Area</th>
-                      <th className="p-3">Department</th>
-                      <th className="p-3">Sentiment</th>
-                      <th className="p-3">Feedback Text</th>
+                      <th className="p-3">Company Tier</th>
+                      <th className="p-3">Customer Feedback Text</th>
+                      <th className="p-3">AI Sentiment</th>
+                      <th className="p-3">AI Role Match</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1041,10 +1318,9 @@ export default function DashboardScreen({
                       const id = row.review_id || row.id;
                       const date = row.date || row.timestamp;
                       const user = row.user_name || row.customer_id;
-                      const tier = row.company_tier || row.customer_tier;
-                      const area = row.product_area || row.category;
-                      const dept = row.department_tag || 'Product/UX';
-                      const sentiment = row.sentiment || (row.rating >= 4 ? 'Positive' : row.rating <= 2 ? 'Negative' : 'Neutral');
+                      const tier = row.company_tier || row.customer_tier || 'Enterprise';
+                      const sentiment = row.sentiment || 'Neutral';
+                      const reason = row.relevance_reason || (role === 'Engineers' ? 'Technical Bug' : role === 'Sales' ? 'Commercial Scope' : 'Product Scope');
 
                       return (
                         <tr key={id} className="hover:bg-slate-50/80 transition-colors">
@@ -1052,35 +1328,28 @@ export default function DashboardScreen({
                           <td className="p-3 text-slate-500 whitespace-nowrap text-[11px]">{date}</td>
                           <td className="p-3 font-semibold text-slate-900 whitespace-nowrap">{user}</td>
                           <td className="p-3 whitespace-nowrap">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                              tier === 'Enterprise' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
-                              tier === 'Scale' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
-                              tier === 'Growth' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                              'bg-slate-100 text-slate-700'
-                            }`}>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${tier === 'Enterprise' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
+                                tier === 'Scale' || tier === 'Mid-Market' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                                  tier === 'Growth' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                                    'bg-slate-100 text-slate-700'
+                              }`}>
                               {tier}
                             </span>
                           </td>
-                          <td className="p-3 font-medium text-slate-800 whitespace-nowrap">{area}</td>
+                          <td className="p-3 text-slate-700 max-w-lg leading-relaxed">{row.feedback_text}</td>
                           <td className="p-3 whitespace-nowrap">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                              dept === 'Engineering' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
-                              dept === 'Sales' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                              'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                            }`}>
-                              {dept}
-                            </span>
-                          </td>
-                          <td className="p-3 whitespace-nowrap">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                              sentiment === 'Positive' ? 'bg-emerald-50 text-emerald-700' :
-                              sentiment === 'Negative' ? 'bg-rose-50 text-rose-700' :
-                              'bg-slate-100 text-slate-700'
-                            }`}>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${sentiment === 'Positive' ? 'bg-emerald-50 text-emerald-700' :
+                                sentiment === 'Negative' ? 'bg-rose-50 text-rose-700' :
+                                  'bg-slate-100 text-slate-700'
+                              }`}>
                               {sentiment}
                             </span>
                           </td>
-                          <td className="p-3 text-slate-600 max-w-lg leading-relaxed">{row.feedback_text}</td>
+                          <td className="p-3 whitespace-nowrap text-[11px]">
+                            <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 text-[10px] font-semibold border border-indigo-100">
+                              {reason}
+                            </span>
+                          </td>
                         </tr>
                       );
                     })}
@@ -1319,7 +1588,7 @@ export default function DashboardScreen({
                     </div>
                     <h3 className="text-lg font-bold text-slate-900">Send Digest Now</h3>
                     <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                      Fires the strictly scoped <strong className="text-slate-900">{role}</strong> digest to your configured Gmail and Slack channels.
+                      Fires the strictly scoped <strong className="text-slate-900">{role}</strong> digest directly to your destination email address.
                     </p>
                   </div>
 
@@ -1327,7 +1596,7 @@ export default function DashboardScreen({
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
                       <span>Destination Email</span>
-                      <span className="text-[10px] text-slate-400">Gmail / SMTP</span>
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Live Delivery</span>
                     </label>
                     <div className="relative">
                       <input
@@ -1341,19 +1610,19 @@ export default function DashboardScreen({
                     </div>
                   </div>
 
-                  {/* Slack Webhook */}
+                  {/* Slack Destination */}
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
-                      <span>Slack Webhook URL</span>
-                      <span className="text-[10px] text-slate-400">Incoming Webhook</span>
+                      <span>Slack Member ID or Webhook</span>
+                      <span className="text-[10px] text-slate-400">Direct DM or Webhook</span>
                     </label>
                     <div className="relative">
                       <input
-                        type="url"
+                        type="text"
                         value={customWebhook}
                         onChange={(e) => setCustomWebhook(e.target.value)}
                         className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-indigo-500 transition-colors"
-                        placeholder="https://hooks.slack.com/services/..."
+                        placeholder="e.g. U0CK7UEJC1X or https://hooks.slack.com/..."
                       />
                       <Slack size={14} className="absolute left-3 top-2.5 text-slate-400" />
                     </div>
@@ -1363,7 +1632,7 @@ export default function DashboardScreen({
                   <button
                     onClick={handleSendNow}
                     disabled={dispatching}
-                    className="w-full py-3.5 rounded-xl font-bold text-xs bg-indigo-600 hover:bg-indigo-700 text-white transition-all shadow-xs flex items-center justify-center gap-2 group disabled:opacity-60"
+                    className="w-full py-3.5 rounded-xl font-bold text-xs bg-indigo-600 hover:bg-indigo-700 text-white transition-all shadow-xs flex items-center justify-center gap-2 group disabled:opacity-60 cursor-pointer"
                   >
                     <Send size={14} className={dispatching ? 'animate-bounce' : 'group-hover:translate-x-0.5 transition-transform'} />
                     <span>{dispatching ? 'Dispatching Digest...' : `Send ${role} Digest Now`}</span>
@@ -1372,22 +1641,49 @@ export default function DashboardScreen({
 
                 {/* Delivery Result Banner */}
                 {dispatchResult && (
-                  <div className="p-5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 space-y-3 shadow-xs">
-                    <div className="flex items-center gap-2 font-bold text-xs text-emerald-700">
-                      <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
-                      <span>Digest Successfully Dispatched!</span>
+                  <div className={`p-5 rounded-2xl border space-y-3 shadow-xs ${
+                    dispatchResult.email_sent || dispatchResult.slack_sent
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                      : 'bg-rose-50 border-rose-200 text-rose-900'
+                  }`}>
+                    <div className="flex items-center gap-2 font-bold text-xs">
+                      {dispatchResult.email_sent || dispatchResult.slack_sent ? (
+                        <>
+                          <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                          <span className="text-emerald-800">Digest Dispatched Successfully!</span>
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle size={16} className="text-rose-600 shrink-0" />
+                          <span className="text-rose-800">Dispatch Error</span>
+                        </>
+                      )}
                     </div>
+
+                    {dispatchResult.email_sent && (
+                      <div className="p-3 bg-white/95 rounded-xl border border-emerald-200 text-xs text-emerald-950 font-semibold leading-relaxed flex items-center gap-2 shadow-xs">
+                        <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                        <span>
+                          Digest sent to your <span className="underline font-bold text-emerald-900">{customEmail}</span>
+                        </span>
+                      </div>
+                    )}
+
                     <div className="text-xs space-y-1.5 text-slate-700">
-                      <div className="flex items-start gap-1.5">
-                        <span className="text-emerald-600">•</span>
-                        <span>{dispatchResult.email_message}</span>
-                      </div>
-                      <div className="flex items-start gap-1.5">
-                        <span className="text-emerald-600">•</span>
-                        <span>{dispatchResult.slack_message}</span>
-                      </div>
+                      {!dispatchResult.email_sent && dispatchResult.email_message && (
+                        <div className="flex items-start gap-1.5">
+                          <span className="text-rose-500">•</span>
+                          <span className="font-medium">{dispatchResult.email_message}</span>
+                        </div>
+                      )}
+                      {dispatchResult.slack_message && dispatchResult.slack_message !== 'Slack Webhook URL not provided.' && (
+                        <div className="flex items-start gap-1.5">
+                          <span className={dispatchResult.slack_sent ? 'text-emerald-600' : 'text-slate-400'}>•</span>
+                          <span>{dispatchResult.slack_message}</span>
+                        </div>
+                      )}
                     </div>
-                    <div className="text-[10px] text-slate-500 pt-2 border-t border-emerald-200/60 font-mono">
+                    <div className="text-[10px] text-slate-400 pt-2 border-t border-slate-200/60 font-mono">
                       Timestamp: {dispatchResult.timestamp}
                     </div>
                   </div>
