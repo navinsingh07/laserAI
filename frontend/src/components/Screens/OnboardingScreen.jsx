@@ -15,7 +15,14 @@ import {
   AlertCircle
 } from 'lucide-react';
 
-export default function OnboardingScreen({ user, loadingDigest, onCompleteOnboarding, onBackToLanding }) {
+export default function OnboardingScreen({
+  user,
+  loadingDigest,
+  onCompleteOnboarding,
+  onBackToLanding,
+  onBackToDashboard,
+  isSwitchingRole,
+}) {
   // Empty inputs with placeholders by default (no dummy pre-filled values)
   const isDefaultDummy = (val) => !val || val === 'Alex Morgan' || val === 'Team Member' || (typeof val === 'string' && val.includes('@laserai.demo'));
   const [name, setName] = useState(isDefaultDummy(user.name) ? '' : user.name);
@@ -121,15 +128,15 @@ export default function OnboardingScreen({ user, loadingDigest, onCompleteOnboar
       {/* ========================================================================= */}
       <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-6 sm:px-10 h-16 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          {onBackToLanding && (
+          {(onBackToDashboard || onBackToLanding) && (
             <button
               type="button"
-              onClick={onBackToLanding}
+              onClick={isSwitchingRole ? onBackToDashboard : onBackToLanding}
               className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 shadow-xs mr-2 cursor-pointer"
-              title="Back to Webpage"
+              title={isSwitchingRole ? "Back to Dashboard" : "Back to Webpage"}
             >
               <ArrowLeft size={14} />
-              <span>Back to Webpage</span>
+              <span>{isSwitchingRole ? "Back to Dashboard" : "Back to Webpage"}</span>
             </button>
           )}
           <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-black shadow-xs">
@@ -140,7 +147,7 @@ export default function OnboardingScreen({ user, loadingDigest, onCompleteOnboar
               Laser AI
             </span>
             <span className="ml-2.5 text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full border border-slate-200 hidden sm:inline-block">
-              Intelligence Setup
+              {isSwitchingRole ? "Role Switch" : "Intelligence Setup"}
             </span>
           </div>
         </div>
@@ -149,7 +156,7 @@ export default function OnboardingScreen({ user, loadingDigest, onCompleteOnboar
           <span className="w-2 h-2 rounded-full bg-emerald-500" />
           <span className="hidden sm:inline">Google Sheet Connected</span>
           <span className="text-slate-300">•</span>
-          <span className="text-indigo-600 font-bold">Step 2 of 3</span>
+          <span className="text-indigo-600 font-bold">{isSwitchingRole ? "Switch Mode" : "Step 2 of 3"}</span>
         </div>
       </header>
 
@@ -162,13 +169,15 @@ export default function OnboardingScreen({ user, loadingDigest, onCompleteOnboar
         <div className="text-center space-y-2.5">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-semibold uppercase tracking-wider shadow-xs">
             <Sparkles size={13} className="text-indigo-600" />
-            <span>Profile & Role-Based Routing</span>
+            <span>{isSwitchingRole ? "Role Reconfiguration" : "Profile & Role-Based Routing"}</span>
           </div>
           <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
-            Configure Your Intelligence Routing
+            {isSwitchingRole ? "Switch Your Intelligence Role" : "Configure Your Intelligence Routing"}
           </h1>
           <p className="text-sm text-slate-500 max-w-lg mx-auto leading-relaxed">
-            Laser AI reads raw customer feedback from Google Sheets and automatically synthesizes role-scoped product digests delivered to your inbox and Slack.
+            {isSwitchingRole
+              ? "Select a new role scope to dynamically synthesize role-isolated customer intelligence and filtered feedback."
+              : "Laser AI reads raw customer feedback from Google Sheets and automatically synthesizes role-scoped product digests delivered to your inbox and Slack."}
           </p>
         </div>
 
@@ -424,7 +433,13 @@ export default function OnboardingScreen({ user, loadingDigest, onCompleteOnboar
               disabled={isSubmitting || loadingDigest}
               className="px-8 py-3 rounded-xl font-bold text-sm bg-indigo-600 hover:bg-indigo-700 disabled:opacity-75 text-white transition-all shadow-sm flex items-center gap-2 group cursor-pointer"
             >
-              <span>{isSubmitting || loadingDigest ? 'Wait... Laser AI is working' : 'Go to Dashboard'}</span>
+              <span>
+                {isSubmitting || loadingDigest
+                  ? 'Wait... Laser AI is working'
+                  : isSwitchingRole
+                  ? 'Apply Role & Go to Dashboard'
+                  : 'Go to Dashboard'}
+              </span>
               <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
             </button>
           </div>

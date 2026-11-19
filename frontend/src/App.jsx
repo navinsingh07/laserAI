@@ -9,6 +9,8 @@ import { authAPI, feedbackAPI, digestAPI, PERSONAS } from './services/api';
 export default function App() {
   // Screen state: 1: Landing, 2: Login, 3: Onboarding, 4: Dashboard, 5: Preview
   const [currentScreen, setCurrentScreen] = useState(1);
+  const [canGoBack, setCanGoBack] = useState(false);
+  const [isSwitchingRole, setIsSwitchingRole] = useState(false);
 
   const [user, setUser] = useState({
     id: 'usr_demo_google',
@@ -53,6 +55,66 @@ export default function App() {
     }
     init();
   }, []);
+
+  // Browser History & Navigation Synchronization (Enables Chrome Back Button & In-App Back)
+  const pushNavState = (screen, extra = {}) => {
+    const nextRole = extra.role || user.role;
+    const nextSwitching = extra.isSwitchingRole !== undefined ? extra.isSwitchingRole : isSwitchingRole;
+    window.history.pushState({ screen, role: nextRole, isSwitchingRole: nextSwitching }, '');
+    setCanGoBack(screen > 1);
+    setCurrentScreen(screen);
+    if (extra.isSwitchingRole !== undefined) {
+      setIsSwitchingRole(extra.isSwitchingRole);
+    }
+  };
+
+  useEffect(() => {
+    // Initial replaceState to track entry point in history
+    if (!window.history.state) {
+      window.history.replaceState({ screen: 1, role: user.role, isSwitchingRole: false }, '');
+    }
+
+    const handlePopState = (event) => {
+      if (event.state && typeof event.state.screen === 'number') {
+        const { screen, role: savedRole, isSwitchingRole: savedSwitching } = event.state;
+        setCurrentScreen(screen);
+        setIsSwitchingRole(!!savedSwitching);
+        setCanGoBack(screen > 1);
+        if (savedRole && savedRole !== user.role) {
+          setUser((prev) => ({ ...prev, role: savedRole }));
+          loadRoleData(savedRole);
+        }
+      } else {
+        setCurrentScreen(1);
+        setIsSwitchingRole(false);
+        setCanGoBack(false);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [user.role]);
+
+  // Unified In-App Back Button Handler
+  const handleGoBack = () => {
+    if (window.history.state && window.history.state.screen > 1) {
+      window.history.back();
+    } else {
+      if (currentScreen === 5) {
+        pushNavState(4);
+      } else if (currentScreen === 4) {
+        pushNavState(isSwitchingRole ? 3 : 1, { isSwitchingRole: false });
+      } else if (currentScreen === 3) {
+        if (user.authenticated) {
+          pushNavState(4, { isSwitchingRole: false });
+        } else {
+          pushNavState(1, { isSwitchingRole: false });
+        }
+      } else if (currentScreen === 2) {
+        pushNavState(1);
+      }
+    }
+  };
 
   const loadRoleData = async (role) => {
     setLoadingDigest(true);
@@ -116,7 +178,7 @@ export default function App() {
       name: '',
       email: '',
     }));
-    setCurrentScreen(3);
+    pushNavState(3, { isSwitchingRole: false });
   };
 
   // Screen 1: Quick-start as a specific persona directly -> Screen 4
@@ -132,14 +194,19 @@ export default function App() {
     setUser(updated);
     await authAPI.switchRole(selectedRole);
     await loadRoleData(selectedRole);
-    setCurrentScreen(4); // directly open that persona's customized perspective
+    pushNavState(4, { role: selectedRole, isSwitchingRole: false });
   };
 
   // Screen 2: Login -> Screen 3
   const handleLoginSuccess = async () => {
     await authAPI.mockLogin();
     setUser((prev) => ({ ...prev, authenticated: true }));
-    setCurrentScreen(3);
+    pushNavState(3, { isSwitchingRole: false });
+  };
+
+  // Screen 4 -> Screen 3: "Switch Role" triggered from Dashboard
+  const handleSwitchRoleToOnboarding = () => {
+    pushNavState(3, { isSwitchingRole: true });
   };
 
   // Screen 3: Onboarding -> Screen 4
@@ -173,10 +240,10 @@ export default function App() {
       }
 
       await loadRoleData(formData.role);
-      setCurrentScreen(4);
+      pushNavState(4, { role: formData.role, isSwitchingRole: false });
     } catch (e) {
       console.error('Error completing onboarding:', e);
-      setCurrentScreen(4);
+      pushNavState(4, { isSwitchingRole: false });
     } finally {
       setLoadingDigest(false);
     }
@@ -192,6 +259,7 @@ export default function App() {
     setUser(updated);
     await authAPI.switchRole(newRole);
     await loadRoleData(newRole);
+    pushNavState(4, { role: newRole, isSwitchingRole: false });
   };
 
   // Screen 5: Instant Dispatch Trigger
@@ -214,6 +282,20 @@ export default function App() {
     }
   };
 
+  // Log Out handler (resets session and returns to landing)
+  const handleLogout = () => {
+    setUser({
+      id: 'usr_demo_google',
+      name: '',
+      email: '',
+      role: 'Founder',
+      digest_frequency: 'Daily',
+      slack_webhook_url: '',
+      authenticated: false,
+    });
+    pushNavState(1, { role: 'Founder', isSwitchingRole: false });
+  };
+
   return (
     <div className="min-h-screen bg-white text-slate-900 font-sans selection:bg-indigo-600 selection:text-white">
       {currentScreen === 1 && (
@@ -226,7 +308,7 @@ export default function App() {
       {currentScreen === 2 && (
         <LoginScreen
           onLoginSuccess={handleLoginSuccess}
-          onBackToLanding={() => setCurrentScreen(1)}
+          onBackToLanding={handleGoBack}
         />
       )}
 
@@ -235,7 +317,9 @@ export default function App() {
           user={user}
           loadingDigest={loadingDigest}
           onCompleteOnboarding={handleCompleteOnboarding}
-          onBackToLanding={() => setCurrentScreen(1)}
+          onBackToLanding={handleGoBack}
+          onBackToDashboard={handleGoBack}
+          isSwitchingRole={isSwitchingRole}
         />
       )}
 
@@ -246,9 +330,12 @@ export default function App() {
           rawFeedback={rawFeedback}
           loadingDigest={loadingDigest}
           datasetInfo={datasetInfo}
+          canGoBack={canGoBack}
+          onGoBack={handleGoBack}
           onUploadDataset={handleUploadDataset}
           onResetDataset={handleResetDataset}
-          onSwitchRoleToOnboarding={() => setCurrentScreen(3)}
+          onSwitchRoleToOnboarding={handleSwitchRoleToOnboarding}
+          onLogout={handleLogout}
           onRegenerate={() => loadRoleData(user.role)}
           onDispatch={handleDispatch}
           dispatchResult={dispatchResult}
@@ -260,8 +347,9 @@ export default function App() {
         <DigestPreviewScreen
           user={user}
           digest={digest}
-          onBackToDashboard={() => setCurrentScreen(4)}
-          onSwitchRoleToOnboarding={() => setCurrentScreen(3)}
+          onBackToDashboard={handleGoBack}
+          onSwitchRoleToOnboarding={handleSwitchRoleToOnboarding}
+          onLogout={handleLogout}
           onDispatch={handleDispatch}
           dispatchResult={dispatchResult}
           dispatching={dispatching}

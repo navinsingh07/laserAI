@@ -96,8 +96,8 @@ export default function DigestPreviewScreen({
                 </button>
               </div>
 
-              {/* Re-configure Role Button */}
-              {onSwitchRoleToOnboarding && (
+              {/* Re-configure Role Button (Founders and PMs only) */}
+              {['Founder', 'Founders', 'PMs', 'PM'].includes(user.role) && onSwitchRoleToOnboarding && (
                 <button
                   onClick={onSwitchRoleToOnboarding}
                   className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-all"
