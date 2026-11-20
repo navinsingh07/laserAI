@@ -224,7 +224,13 @@ class EmailService:
         # 2. Try Brevo REST API if configured (HTTPS - never blocked by cloud hosts)
         if settings.BREVO_API_KEY and settings.BREVO_API_KEY.strip():
             try:
-                sender_email = settings.SMTP_USER.strip() if settings.SMTP_USER else "laserai@demo.com"
+                sender_email = (
+                    settings.BREVO_SENDER_EMAIL.strip() 
+                    if settings.BREVO_SENDER_EMAIL 
+                    else (settings.SMTP_USER.strip() if settings.SMTP_USER else "")
+                )
+                if not sender_email:
+                    return False, "Brevo error: No verified sender email specified. Please set BREVO_SENDER_EMAIL or SMTP_USER in environment variables."
                 async with httpx.AsyncClient(timeout=15.0) as client:
                     resp = await client.post(
                         "https://api.brevo.com/v3/smtp/email",

@@ -26,6 +26,7 @@ class Settings:
     RESEND_API_KEY: str = os.getenv("RESEND_API_KEY", "")
     RESEND_FROM_EMAIL: str = os.getenv("RESEND_FROM_EMAIL", "Laser AI <onboarding@resend.dev>")
     BREVO_API_KEY: str = os.getenv("BREVO_API_KEY", "")
+    BREVO_SENDER_EMAIL: str = os.getenv("BREVO_SENDER_EMAIL", "")
 
     # Slack Configuration
     DEFAULT_SLACK_WEBHOOK: str = os.getenv("DEFAULT_SLACK_WEBHOOK", "")
