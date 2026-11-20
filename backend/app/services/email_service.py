@@ -224,18 +224,19 @@ class EmailService:
         # 2. Try Brevo REST API if configured (HTTPS - never blocked by cloud hosts)
         if settings.BREVO_API_KEY and settings.BREVO_API_KEY.strip():
             try:
+                clean_api_key = settings.BREVO_API_KEY.strip().strip("'\"")
                 sender_email = (
-                    settings.BREVO_SENDER_EMAIL.strip() 
+                    settings.BREVO_SENDER_EMAIL.strip().strip("'\"") 
                     if settings.BREVO_SENDER_EMAIL 
-                    else (settings.SMTP_USER.strip() if settings.SMTP_USER else "")
+                    else (settings.SMTP_USER.strip().strip("'\"") if settings.SMTP_USER else "")
                 )
                 if not sender_email:
-                    return False, "Brevo error: No verified sender email specified. Please set BREVO_SENDER_EMAIL or SMTP_USER in environment variables."
+                    return False, "Brevo error: No verified sender email specified. Please set BREVO_SENDER_EMAIL in Render Environment Variables."
                 async with httpx.AsyncClient(timeout=15.0) as client:
                     resp = await client.post(
                         "https://api.brevo.com/v3/smtp/email",
                         headers={
-                            "api-key": settings.BREVO_API_KEY.strip(),
+                            "api-key": clean_api_key,
                             "Content-Type": "application/json",
                             "accept": "application/json"
                         },
@@ -256,6 +257,8 @@ class EmailService:
                         except Exception:
                             pass
                         print(f"[EmailService] Brevo API error ({resp.status_code}): {err_text}")
+                        if "key not found" in err_text.lower():
+                            return False, "Brevo error: Key not found. Make sure you generated the key from the 'API Keys' tab in Brevo (starts with xkeysib-), not the 'SMTP' tab."
                         return False, f"Brevo error: {err_text}"
             except Exception as e:
                 print(f"[EmailService] Brevo dispatch exception: {e}")
