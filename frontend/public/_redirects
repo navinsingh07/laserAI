@@ -1,3 +1,0 @@
-/api/notify/dispatch   /.netlify/functions/dispatch   200
-/api/*                 /404.html                      404
-/*                     /index.html                    200

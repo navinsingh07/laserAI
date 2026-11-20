@@ -4,7 +4,7 @@ import LoginScreen from './components/Screens/LoginScreen';
 import OnboardingScreen from './components/Screens/OnboardingScreen';
 import DashboardScreen from './components/Screens/DashboardScreen';
 import DigestPreviewScreen from './components/Screens/DigestPreviewScreen';
-import { authAPI, feedbackAPI, digestAPI, PERSONAS, getFallbackDigest, getFallbackRawFeedback } from './services/api';
+import { authAPI, feedbackAPI, digestAPI, PERSONAS } from './services/api';
 
 export default function App() {
   // Screen state: 1: Landing, 2: Login, 3: Onboarding, 4: Dashboard, 5: Preview
@@ -38,28 +38,19 @@ export default function App() {
     async function init() {
       try {
         const u = await authAPI.getMe();
-        const role = u?.role || 'Founder';
-        const persona = PERSONAS[role] || PERSONAS['Founders'] || PERSONAS['Founder'];
-        const fullUser = {
-          ...u,
-          role,
-          name: u?.name || persona?.name || 'Alex Morgan',
-          email: u?.email || persona?.email || 'alex@laserai.demo',
-          authenticated: false,
-        };
+        const persona = PERSONAS[u.role] || PERSONAS['Founders'] || PERSONAS['Founder'];
+        const fullUser = { ...u, name: u.name || persona?.name || 'Alex Morgan', email: u.email || persona?.email || 'alex@laserai.demo' };
         setUser(fullUser);
         const [raw, dig, info] = await Promise.all([
-          feedbackAPI.getRawFeedback(role),
-          digestAPI.generateDigest(role),
+          feedbackAPI.getRawFeedback(u.role),
+          digestAPI.generateDigest(u.role),
           feedbackAPI.getDatasetInfo(),
         ]);
-        setRawFeedback(Array.isArray(raw) && raw.length > 0 ? raw : getFallbackRawFeedback(role));
-        setDigest(dig || getFallbackDigest(role));
-        if (info && typeof info === 'object') setDatasetInfo(info);
+        setRawFeedback(raw);
+        setDigest(dig);
+        if (info) setDatasetInfo(info);
       } catch (e) {
-        console.warn('Init error, using fallbacks:', e);
-        setRawFeedback(getFallbackRawFeedback('Founder'));
-        setDigest(getFallbackDigest('Founder'));
+        console.warn('Init error:', e);
       }
     }
     init();
@@ -134,13 +125,11 @@ export default function App() {
         feedbackAPI.getRawFeedback(role),
         feedbackAPI.getDatasetInfo(),
       ]);
-      setDigest(dig || getFallbackDigest(role));
-      setRawFeedback(Array.isArray(feedback) && feedback.length > 0 ? feedback : getFallbackRawFeedback(role));
-      if (info && typeof info === 'object') setDatasetInfo(info);
+      setDigest(dig);
+      setRawFeedback(feedback);
+      if (info) setDatasetInfo(info);
     } catch (e) {
       console.error('Error loading role digest:', e);
-      setDigest(getFallbackDigest(role));
-      setRawFeedback(getFallbackRawFeedback(role));
     } finally {
       setLoadingDigest(false);
     }
@@ -222,11 +211,9 @@ export default function App() {
 
   // Screen 3: Onboarding -> Screen 4
   const handleCompleteOnboarding = async (formData) => {
-    const selectedRole = formData.role || user.role || 'Founder';
     const updated = {
       ...user,
       ...formData,
-      role: selectedRole,
       name: formData.name?.trim() || user.name || 'Team Member',
       email: formData.email?.trim() || user.email || '',
       authenticated: true,
@@ -234,33 +221,17 @@ export default function App() {
     setUser(updated);
     setLoadingDigest(true);
     try {
-      try {
-        await authAPI.onboarding(formData);
-      } catch (authErr) {
-        console.warn('Auth onboarding call skipped in offline mode:', authErr);
-      }
+      await authAPI.onboarding(formData);
 
       if (formData.customFile) {
-        try {
-          const uploadRes = await feedbackAPI.uploadDataset(formData.customFile);
-          setDatasetInfo({
-            isCustom: true,
-            filename: formData.customFile.name,
-            totalRows: uploadRes?.total_rows || 150,
-          });
-        } catch (upErr) {
-          setDatasetInfo({
-            isCustom: true,
-            filename: formData.customFile.name,
-            totalRows: 150,
-          });
-        }
+        const uploadRes = await feedbackAPI.uploadDataset(formData.customFile);
+        setDatasetInfo({
+          isCustom: true,
+          filename: formData.customFile.name,
+          totalRows: uploadRes.total_rows || 0,
+        });
       } else {
-        try {
-          await feedbackAPI.resetDataset();
-        } catch (resErr) {
-          // offline mode
-        }
+        await feedbackAPI.resetDataset();
         setDatasetInfo({
           isCustom: false,
           filename: 'Connected Google Sheet',
@@ -268,13 +239,11 @@ export default function App() {
         });
       }
 
-      await loadRoleData(selectedRole);
-      pushNavState(4, { role: selectedRole, isSwitchingRole: false });
+      await loadRoleData(formData.role);
+      pushNavState(4, { role: formData.role, isSwitchingRole: false });
     } catch (e) {
-      console.error('Error completing onboarding, ensuring dashboard loads:', e);
-      setDigest((prev) => prev || getFallbackDigest(selectedRole));
-      setRawFeedback((prev) => (Array.isArray(prev) && prev.length > 0 ? prev : getFallbackRawFeedback(selectedRole)));
-      pushNavState(4, { role: selectedRole, isSwitchingRole: false });
+      console.error('Error completing onboarding:', e);
+      pushNavState(4, { isSwitchingRole: false });
     } finally {
       setLoadingDigest(false);
     }

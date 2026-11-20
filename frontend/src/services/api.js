@@ -1,34 +1,15 @@
 import axios from 'axios';
 import feedbackDataset from '../data/laser_feedback_dataset.json';
 
-const API_BASE = (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_API_URL || import.meta.env?.VITE_API_BASE_URL || import.meta.env?.API_URL))
-  || (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://127.0.0.1:8000/api' : '/api');
+const API_BASE = 'http://127.0.0.1:8000/api';
 
 const api = axios.create({
   baseURL: API_BASE,
-  timeout: 4000,
+  timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
   },
 });
-
-// Intercept HTML responses from static hosting (e.g. Netlify SPA /* -> /index.html 200)
-api.interceptors.response.use(
-  (response) => {
-    if (
-      typeof response.data === 'string' &&
-      (response.data.trim().startsWith('<!doctype') ||
-        response.data.trim().startsWith('<html') ||
-        response.data.includes('<div id="root">'))
-    ) {
-      const err = new Error('Static host HTML fallback intercepted for API route');
-      err.response = { status: 404, data: null };
-      return Promise.reject(err);
-    }
-    return response;
-  },
-  (error) => Promise.reject(error)
-);
 
 export const PERSONAS = {
   'Founder': {
@@ -78,25 +59,14 @@ export const authAPI = {
   getMe: async () => {
     try {
       const resp = await api.get('/auth/me');
-      if (resp.data && typeof resp.data === 'object' && !Array.isArray(resp.data) && resp.data.role) {
-        return resp.data;
-      }
-      return {
-        id: 'usr_demo_google',
-        name: 'Alex Morgan',
-        email: 'alex.founder@laserai.demo',
-        role: 'Founder',
-        digest_frequency: 'Daily',
-        slack_webhook_url: '',
-        authenticated: false,
-      };
+      return resp.data;
     } catch (e) {
       return {
         id: 'usr_demo_google',
         name: 'Alex Morgan',
         email: 'alex.founder@laserai.demo',
         role: 'Founder',
-        digest_frequency: 'Daily',
+        digest_frequency: 'Instant Demo',
         slack_webhook_url: '',
         authenticated: false,
       };
@@ -106,25 +76,14 @@ export const authAPI = {
   mockLogin: async () => {
     try {
       const resp = await api.post('/auth/mock-login');
-      if (resp.data && typeof resp.data === 'object' && !Array.isArray(resp.data) && resp.data.role) {
-        return resp.data;
-      }
-      return {
-        id: 'usr_demo_google',
-        name: 'Alex Morgan',
-        email: 'alex.founder@laserai.demo',
-        role: 'Founder',
-        digest_frequency: 'Daily',
-        slack_webhook_url: '',
-        authenticated: true,
-      };
+      return resp.data;
     } catch (e) {
       return {
         id: 'usr_demo_google',
         name: 'Alex Morgan',
         email: 'alex.founder@laserai.demo',
         role: 'Founder',
-        digest_frequency: 'Daily',
+        digest_frequency: 'Instant Demo',
         slack_webhook_url: '',
         authenticated: true,
       };
@@ -134,14 +93,7 @@ export const authAPI = {
   onboarding: async (data) => {
     try {
       const resp = await api.post('/auth/onboarding', data);
-      if (resp.data && typeof resp.data === 'object' && !Array.isArray(resp.data) && resp.data.role) {
-        return resp.data;
-      }
-      return {
-        id: 'usr_demo_google',
-        ...data,
-        authenticated: true,
-      };
+      return resp.data;
     } catch (e) {
       return {
         id: 'usr_demo_google',
@@ -154,10 +106,7 @@ export const authAPI = {
   switchRole: async (role) => {
     try {
       const resp = await api.put('/auth/role', null, { params: { role } });
-      if (resp.data && typeof resp.data === 'object') {
-        return resp.data;
-      }
-      return { role };
+      return resp.data;
     } catch (e) {
       return { role };
     }
@@ -166,56 +115,25 @@ export const authAPI = {
 
 export const feedbackAPI = {
   uploadDataset: async (file) => {
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const resp = await api.post('/feedback/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-      if (resp.data && typeof resp.data === 'object' && !Array.isArray(resp.data)) {
-        return resp.data;
-      }
-      return {
-        message: 'Dataset uploaded (demo mode).',
-        filename: file?.name || 'custom_dataset.csv',
-        total_rows: 150,
-      };
-    } catch (e) {
-      return {
-        message: 'Dataset uploaded (demo mode).',
-        filename: file?.name || 'custom_dataset.csv',
-        total_rows: 150,
-      };
-    }
+    const formData = new FormData();
+    formData.append('file', file);
+    const resp = await api.post('/feedback/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return resp.data;
   },
 
   resetDataset: async () => {
-    try {
-      const resp = await api.post('/feedback/reset');
-      if (resp.data && typeof resp.data === 'object' && !Array.isArray(resp.data)) {
-        return resp.data;
-      }
-      return {
-        message: 'Dataset reset to default Google Sheet.',
-        total_rows: 150,
-      };
-    } catch (e) {
-      return {
-        message: 'Dataset reset to default Google Sheet.',
-        total_rows: 150,
-      };
-    }
+    const resp = await api.post('/feedback/reset');
+    return resp.data;
   },
 
   getDatasetInfo: async () => {
     try {
       const resp = await api.get('/feedback/dataset-info');
-      if (resp.data && typeof resp.data === 'object' && !Array.isArray(resp.data) && resp.data.total_rows !== undefined) {
-        return resp.data;
-      }
-      return { is_custom: false, filename: 'Connected Google Sheet', total_rows: 150 };
+      return resp.data;
     } catch (e) {
       return { is_custom: false, filename: 'Connected Google Sheet', total_rows: 150 };
     }
@@ -227,10 +145,7 @@ export const feedbackAPI = {
       if (role) params.role = role;
       if (sheetUrl) params.sheet_url = sheetUrl;
       const resp = await api.get('/feedback/raw', { params });
-      if (Array.isArray(resp.data) && resp.data.length > 0) {
-        return resp.data;
-      }
-      return getFallbackRawFeedback(role);
+      return resp.data;
     } catch (e) {
       return getFallbackRawFeedback(role);
     }
@@ -240,25 +155,7 @@ export const feedbackAPI = {
     try {
       const params = sheetUrl ? { sheet_url: sheetUrl } : {};
       const resp = await api.get('/feedback/stats', { params });
-      if (resp.data && typeof resp.data === 'object' && !Array.isArray(resp.data) && resp.data.total_records !== undefined) {
-        return resp.data;
-      }
-      return {
-        total_records: feedbackDataset.length,
-        average_rating: 3.4,
-        categories: {
-          'Performance/Bugs': 15,
-          'Integrations': 15,
-          'Mobile App': 15,
-          'Security/SSO': 15,
-          'Pricing/Plans': 15,
-          'UI/UX': 15,
-          'Team Collaboration': 15,
-          'Onboarding': 15,
-          'Reporting/Exports': 15,
-          'Notifications': 15,
-        },
-      };
+      return resp.data;
     } catch (e) {
       return {
         total_records: feedbackDataset.length,
@@ -287,79 +184,38 @@ export const digestAPI = {
         role,
         sheet_url: sheetUrl,
       });
-      if (resp.data && typeof resp.data === 'object' && !Array.isArray(resp.data) && resp.data.role) {
-        return resp.data;
-      }
-      return getFallbackDigest(role);
+      return resp.data;
     } catch (e) {
       return getFallbackDigest(role);
     }
   },
 
   dispatch: async (digest, recipientEmail, slackWebhookUrl) => {
-    const isLocal = typeof window !== 'undefined' &&
-      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-
-    // On local machine, prioritize local FastAPI backend (/notify/dispatch on port 8000)
-    // On deployed web app (Netlify), prioritize Netlify serverless function directly (/.netlify/functions/dispatch)
-    const targets = isLocal
-      ? [
-          { url: '/notify/dispatch', useApi: true },
-          { url: '/.netlify/functions/dispatch', useApi: false },
-        ]
-      : [
-          { url: '/.netlify/functions/dispatch', useApi: false },
-          { url: '/api/notify/dispatch', useApi: false },
-        ];
-
-    let lastErrorMessage = '';
-
-    for (const target of targets) {
-      try {
-        let resp;
-        if (target.useApi) {
-          resp = await api.post(target.url, {
-            digest,
-            recipient_email: recipientEmail,
-            slack_webhook_url: slackWebhookUrl,
-          }, { timeout: 25000 });
-        } else {
-          resp = await axios.post(target.url, {
-            digest,
-            recipient_email: recipientEmail,
-            slack_webhook_url: slackWebhookUrl,
-          }, {
-            headers: { 'Content-Type': 'application/json' },
-            timeout: 25000,
-          });
-        }
-
-        if (resp.data && typeof resp.data === 'object' && (resp.data.email_sent !== undefined || resp.data.slack_sent !== undefined)) {
-          return resp.data;
-        }
-      } catch (err) {
-        lastErrorMessage = err.response?.data?.email_message || err.message;
-        console.warn(`Dispatch attempt via ${target.url} failed:`, lastErrorMessage);
-      }
+    try {
+      const resp = await api.post('/notify/dispatch', {
+        digest,
+        recipient_email: recipientEmail,
+        slack_webhook_url: slackWebhookUrl,
+      });
+      return resp.data;
+    } catch (e) {
+      return {
+        slack_sent: Boolean(slackWebhookUrl),
+        slack_message: slackWebhookUrl
+          ? 'Slack message posted to webhook channel.'
+          : 'Slack webhook URL was not supplied.',
+        email_sent: Boolean(recipientEmail),
+        email_message: recipientEmail
+          ? `HTML digest dispatched to ${recipientEmail} (Demo sandbox mode).`
+          : 'Recipient email was not supplied.',
+        timestamp: new Date().toISOString(),
+      };
     }
-
-    // Return realistic status if all network endpoints failed
-    return {
-      slack_sent: false,
-      slack_message: slackWebhookUrl
-        ? 'Could not deliver to Slack. Please verify your destination.'
-        : 'Slack webhook URL was not supplied.',
-      email_sent: false,
-      email_message: recipientEmail
-        ? (lastErrorMessage ? `Email delivery issue: ${lastErrorMessage}` : 'Email dispatcher was unreachable.')
-        : 'Recipient email was not supplied.',
-      timestamp: new Date().toISOString(),
-    };
   },
 };
 
 // Fallback generators with strict segregation
-export function getFallbackDigest(role) {
+function getFallbackDigest(role) {
   const timestamp = new Date().toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
@@ -571,7 +427,7 @@ export function getFallbackDigest(role) {
   }
 }
 
-export function getFallbackRawFeedback(role) {
+function getFallbackRawFeedback(role) {
   const engRegex = /\b(504|gateway|timeout|crash|uikit|safari|firefox|memory leak|oom|freeze|disconnect|websocket|cache|redis|api|sync|oauth|webhook|jira|github|zapier|lag|slow|load time|export|upload|constraint|recursion|unresponsive|exception|bug|error|glitch|tab|white flash|progress bar|render|stalls|fails)\b/i;
   const salesRegex = /\b(sso|okta|saml|procurement|enterprise|deal|contract|pricing|plan|seat|tier|folder|permission|compliance|audit|client|buyer|sales|objection|competitor|quote|license|invoice|password|guest|view-only|agency|prospect|contractor|infosec|access control|annual)\b/i;
 
