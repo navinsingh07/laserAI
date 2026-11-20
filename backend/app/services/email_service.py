@@ -188,7 +188,7 @@ class EmailService:
         html_content = self.render_html_digest(digest)
         subject = f"🎯 Laser AI — {digest.role.value} Product Digest ({digest.generated_at})"
 
-        # 1. Try Resend REST API if configured
+        # 1. Try Resend REST API if configured (HTTPS - never blocked by cloud hosts)
         if settings.RESEND_API_KEY and settings.RESEND_API_KEY.strip():
             try:
                 from_email = settings.RESEND_FROM_EMAIL.strip() if settings.RESEND_FROM_EMAIL else "Laser AI <onboarding@resend.dev>"
@@ -207,9 +207,7 @@ class EmailService:
                         }
                     )
                     if resp.status_code in (200, 201):
-                        data = resp.json()
-                        email_id = data.get("id", "ok")
-                        return True, f"Digest sent to your {clean_recipient}."
+                        return True, f"Digest sent to {clean_recipient} via Resend."
                     else:
                         err_text = resp.text
                         try:
@@ -223,7 +221,41 @@ class EmailService:
                 print(f"[EmailService] Resend dispatch exception: {e}")
                 return False, f"Resend connection failed: {str(e)}"
 
-        # 2. Try Gmail SMTP if credentials configured
+        # 2. Try Brevo REST API if configured (HTTPS - never blocked by cloud hosts)
+        if settings.BREVO_API_KEY and settings.BREVO_API_KEY.strip():
+            try:
+                sender_email = settings.SMTP_USER.strip() if settings.SMTP_USER else "laserai@demo.com"
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    resp = await client.post(
+                        "https://api.brevo.com/v3/smtp/email",
+                        headers={
+                            "api-key": settings.BREVO_API_KEY.strip(),
+                            "Content-Type": "application/json",
+                            "accept": "application/json"
+                        },
+                        json={
+                            "sender": {"name": "Laser AI", "email": sender_email},
+                            "to": [{"email": clean_recipient}],
+                            "subject": subject,
+                            "htmlContent": html_content
+                        }
+                    )
+                    if resp.status_code in (200, 201):
+                        return True, f"Digest sent to {clean_recipient} via Brevo."
+                    else:
+                        err_text = resp.text
+                        try:
+                            err_json = resp.json()
+                            err_text = err_json.get("message", err_text)
+                        except Exception:
+                            pass
+                        print(f"[EmailService] Brevo API error ({resp.status_code}): {err_text}")
+                        return False, f"Brevo error: {err_text}"
+            except Exception as e:
+                print(f"[EmailService] Brevo dispatch exception: {e}")
+                return False, f"Brevo connection failed: {str(e)}"
+
+        # 3. Try Gmail SMTP if credentials configured (Works locally; Render Free tier blocks port 587)
         if settings.SMTP_USER and settings.SMTP_PASS:
             try:
                 smtp_user = settings.SMTP_USER.strip()
@@ -235,14 +267,18 @@ class EmailService:
                 msg.attach(MIMEText(digest.executive_summary, "plain"))
                 msg.attach(MIMEText(html_content, "html"))
 
-                with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
+                with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10.0) as server:
                     server.starttls()
                     server.login(smtp_user, smtp_pass)
                     server.sendmail(smtp_user, clean_recipient, msg.as_string())
 
-                return True, f"Digest sent to your {clean_recipient}."
+                return True, f"Digest sent to {clean_recipient}."
             except Exception as e:
-                return False, f"Gmail SMTP failed: {str(e)}"
+                err_str = str(e)
+                print(f"[EmailService] SMTP error: {err_str}")
+                if "timed out" in err_str.lower() or "connection" in err_str.lower():
+                    return False, f"SMTP failed (Render Free tier blocks outbound port {settings.SMTP_PORT}). Add RESEND_API_KEY or BREVO_API_KEY in Render Environment Variables for HTTPS delivery."
+                return False, f"Gmail SMTP failed: {err_str}"
 
         return True, f"Email delivered to {clean_recipient} (Demo Sandbox Mode: add RESEND_API_KEY in backend/.env for live dispatch)."
 
