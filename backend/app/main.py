@@ -9,11 +9,11 @@ app = FastAPI(
     description="Automated Feedback Intelligence Engine powering role-specific product digests."
 )
 
-# Enable CORS for local Vite development
+# Enable CORS for local Vite development and deployed frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -1,11 +1,15 @@
 import axios from 'axios';
 import feedbackDataset from '../data/laser_feedback_dataset.json';
 
-const API_BASE = 'http://127.0.0.1:8000/api';
+const rawApiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://127.0.0.1:8000' : '');
+const cleanApiUrl = rawApiUrl.replace(/\/+$/, '');
+const API_BASE = cleanApiUrl
+  ? (cleanApiUrl.endsWith('/api') ? cleanApiUrl : `${cleanApiUrl}/api`)
+  : '/api';
 
 const api = axios.create({
   baseURL: API_BASE,
-  timeout: 15000,
+  timeout: 60000,
   headers: {
     'Content-Type': 'application/json',
   },
