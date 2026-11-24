@@ -1191,7 +1191,7 @@ export default function DashboardScreen({
       {/* ========================================================================= */}
       <main className="flex-1 h-full flex flex-col bg-[#F8FAFC] overflow-y-auto min-w-0">
 
-        {/* Top Header Bar (Clean breadcrumb & status, in-app back removed as Chrome Back handles it) */}
+        {/* Top Header Bar (Clean breadcrumb & navigation) */}
         <header className="h-16 px-6 lg:px-8 border-b border-slate-200/80 bg-white flex items-center justify-between gap-4 sticky top-0 z-30">
           <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
             <span>Home</span>
@@ -1199,69 +1199,6 @@ export default function DashboardScreen({
             <span>Feedback Intelligence</span>
             <ChevronRight size={12} className="text-slate-400" />
             <span className="font-bold text-slate-900">{role} Scope</span>
-          </div>
-
-          {/* Top Bar Indicator: Demo Dataset (Instant Mode) vs Live Google Sheet (Laser AI Active) */}
-          <div className="flex items-center gap-2.5">
-            {datasetInfo?.is_live_sheet ? (
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-700 text-xs font-bold shadow-xs">
-                  <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse"></span>
-                  <Sparkles size={12} className="text-purple-600" />
-                  <span>Live Google Sheet (Laser AI Active)</span>
-                </div>
-                {isPrivilegedRole && (
-                  <button
-                    type="button"
-                    onClick={onResetDataset}
-                    className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-lg border border-slate-200 transition-colors cursor-pointer"
-                    title="Switch back to Demo Dataset (Instant Mode)"
-                  >
-                    Switch to Demo Mode
-                  </button>
-                )}
-              </div>
-            ) : datasetInfo?.mode === 'custom_upload' || (datasetInfo?.isCustom && !datasetInfo?.is_live_sheet) ? (
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold shadow-xs">
-                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-                  <FileSpreadsheet size={12} className="text-amber-600" />
-                  <span className="truncate max-w-[180px]">Custom: {datasetInfo?.filename || 'File'} (Laser AI Active)</span>
-                </div>
-                {isPrivilegedRole && (
-                  <button
-                    type="button"
-                    onClick={onResetDataset}
-                    className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-lg border border-slate-200 transition-colors cursor-pointer"
-                    title="Switch back to Demo Dataset (Instant Mode)"
-                  >
-                    Switch to Demo Mode
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold shadow-xs">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                  <Zap size={12} className="text-emerald-600 fill-current" />
-                  <span>Demo Dataset (Instant Mode)</span>
-                </div>
-                {isPrivilegedRole && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSheetError('');
-                      setShowGoogleSheetModal(true);
-                    }}
-                    className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-700 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg border border-indigo-200 transition-colors shadow-xs cursor-pointer"
-                    title="Connect a live Google Sheet URL to run real-time Laser AI"
-                  >
-                    <Sparkles size={12} className="text-indigo-600" />
-                    <span>Connect Live Google Sheet</span>
-                  </button>
-                )}
-              </div>
-            )}
           </div>
         </header>
 
