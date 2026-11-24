@@ -29,7 +29,9 @@ export default function App() {
   const [dispatching, setDispatching] = useState(false);
   const [datasetInfo, setDatasetInfo] = useState({
     isCustom: false,
-    filename: 'Connected Google Sheet',
+    is_live_sheet: false,
+    mode: 'demo',
+    filename: 'Demo Dataset (Built-in)',
     totalRows: 150,
   });
 
@@ -154,13 +156,39 @@ export default function App() {
     }
   };
 
+  const handleConnectGoogleSheet = async (sheetUrl) => {
+    setLoadingDigest(true);
+    try {
+      const res = await feedbackAPI.connectGoogleSheet(sheetUrl);
+      setDatasetInfo({
+        isCustom: true,
+        is_live_sheet: true,
+        mode: 'live_sheet',
+        filename: 'Live Google Sheet',
+        sheet_url: sheetUrl,
+        totalRows: res.total_rows || 0,
+      });
+      await loadRoleData(user.role);
+      return res;
+    } catch (e) {
+      console.error('Failed to connect Google Sheet:', e);
+      const msg = e.response?.data?.detail || e.message || 'Error connecting to Google Sheet.';
+      alert(`Error connecting Google Sheet: ${msg}`);
+      throw e;
+    } finally {
+      setLoadingDigest(false);
+    }
+  };
+
   const handleResetDataset = async () => {
     setLoadingDigest(true);
     try {
       await feedbackAPI.resetDataset();
       setDatasetInfo({
         isCustom: false,
-        filename: 'Connected Google Sheet',
+        is_live_sheet: false,
+        mode: 'demo',
+        filename: 'Demo Dataset (Built-in)',
         totalRows: 150,
       });
       await loadRoleData(user.role);
@@ -333,6 +361,7 @@ export default function App() {
           canGoBack={canGoBack}
           onGoBack={handleGoBack}
           onUploadDataset={handleUploadDataset}
+          onConnectGoogleSheet={handleConnectGoogleSheet}
           onResetDataset={handleResetDataset}
           onSwitchRoleToOnboarding={handleSwitchRoleToOnboarding}
           onLogout={handleLogout}

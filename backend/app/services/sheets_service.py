@@ -12,6 +12,7 @@ class SheetsService:
         self.sample_csv_path = settings.SAMPLE_CSV_PATH
         self.active_custom_df: Optional[pd.DataFrame] = None
         self.active_custom_filename: Optional[str] = None
+        self.active_sheet_url: Optional[str] = None
 
     @staticmethod
     def _convert_google_sheet_url(url: str) -> str:
@@ -24,25 +25,79 @@ class SheetsService:
             return f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
         return url
 
+    def is_demo_mode(self, sheet_url: Optional[str] = None) -> bool:
+        """Returns True if viewing the default demo dataset without live sheet or custom file."""
+        if sheet_url and sheet_url.strip():
+            return False
+        if self.active_sheet_url:
+            return False
+        if self.active_custom_df is not None:
+            return False
+        return True
+
     def fetch_dataframe(self, sheet_url: Optional[str] = None) -> pd.DataFrame:
         """Loads customer feedback using pandas from active uploaded file, Google Sheets URL or local CSV."""
-        # 1. Custom uploaded file takes highest priority if present
+        # 1. Custom uploaded file or live sheet dataframe takes highest priority if present
         if self.active_custom_df is not None and not self.active_custom_df.empty:
             return self.active_custom_df
 
-        # 2. Live Google Sheet URL
-        target_url = self._convert_google_sheet_url(sheet_url or settings.GOOGLE_SHEET_URL)
-        if target_url:
-            try:
-                with httpx.Client(timeout=10.0) as client:
-                    resp = client.get(target_url, follow_redirects=True)
-                    if resp.status_code == 200 and ("text/csv" in resp.headers.get("content-type", "") or "timestamp" in resp.text):
-                        return pd.read_csv(io.StringIO(resp.text))
-            except Exception as e:
-                print(f"[SheetsService] Warning: Could not fetch live Google Sheet ({e}). Using local sample.")
+        # 2. Live Google Sheet URL if passed explicitly
+        if sheet_url and sheet_url.strip():
+            target_url = self._convert_google_sheet_url(sheet_url.strip())
+            if target_url:
+                try:
+                    with httpx.Client(timeout=12.0) as client:
+                        resp = client.get(target_url, follow_redirects=True)
+                        if resp.status_code == 200 and ("text/csv" in resp.headers.get("content-type", "") or "timestamp" in resp.text):
+                            return self._normalize_dataframe(pd.read_csv(io.StringIO(resp.text)))
+                except Exception as e:
+                    print(f"[SheetsService] Warning: Could not fetch Google Sheet ({e}). Using local sample.")
 
         # 3. Default local fallback CSV
         return pd.read_csv(self.sample_csv_path)
+
+    def connect_google_sheet(self, sheet_url: str) -> Dict[str, Any]:
+        """Converts a public Google Sheet URL to CSV export, downloads rows, normalizes, and activates live mode."""
+        if not sheet_url or not sheet_url.strip():
+            raise ValueError("Please provide a valid Google Sheet URL.")
+
+        target_url = self._convert_google_sheet_url(sheet_url.strip())
+        if not target_url or "spreadsheets/d/" not in target_url:
+            raise ValueError("The provided URL is not a recognized Google Sheets link. Please provide a link like: https://docs.google.com/spreadsheets/d/{SHEET_ID}/...")
+
+        try:
+            with httpx.Client(timeout=15.0) as client:
+                resp = client.get(target_url, follow_redirects=True)
+                if resp.status_code != 200:
+                    raise ValueError(f"Google responded with status code {resp.status_code}. Please ensure the sheet sharing is set to 'Anyone with the link can view'.")
+
+                content_type = resp.headers.get("content-type", "").lower()
+                if "text/html" in content_type and "accounts.google.com" in resp.text:
+                    raise ValueError("Google Sheet is private. Please update sharing settings to 'Anyone with the link can view'.")
+
+                raw_df = pd.read_csv(io.StringIO(resp.text))
+        except Exception as e:
+            if isinstance(e, ValueError):
+                raise e
+            raise ValueError(f"Could not download Google Sheet: {str(e)}")
+
+        normalized_df = self._normalize_dataframe(raw_df)
+        if normalized_df.empty:
+            raise ValueError("No valid customer feedback reviews could be parsed from this Google Sheet.")
+
+        self.active_sheet_url = sheet_url.strip()
+        self.active_custom_df = normalized_df
+        self.active_custom_filename = "Live Google Sheet"
+
+        return {
+            "success": True,
+            "total_rows": len(normalized_df),
+            "filename": "Live Google Sheet",
+            "sheet_url": self.active_sheet_url,
+            "mode": "live_sheet",
+            "is_live_sheet": True,
+            "is_custom": True
+        }
 
     def load_from_upload(self, file_bytes: bytes, filename: str) -> Dict[str, Any]:
         """Parses an uploaded CSV or Excel file (.xlsx, .xls), normalizes columns, and stores as active dataset."""
@@ -58,34 +113,55 @@ class SheetsService:
         normalized_df = self._normalize_dataframe(raw_df)
         self.active_custom_df = normalized_df
         self.active_custom_filename = filename
+        self.active_sheet_url = None
 
         return {
             "total_rows": len(normalized_df),
             "filename": filename,
-            "columns": list(normalized_df.columns)
+            "columns": list(normalized_df.columns),
+            "mode": "custom_upload",
+            "is_live_sheet": False,
+            "is_custom": True
         }
 
     def reset_custom_dataset(self) -> Dict[str, Any]:
-        """Resets back to the default 150-row Google Sheet dataset."""
+        """Resets back to the default 150-row Demo dataset."""
         self.active_custom_df = None
         self.active_custom_filename = None
+        self.active_sheet_url = None
         return {
             "status": "reset",
-            "filename": "Connected Google Sheet",
-            "total_rows": 150
+            "filename": "Demo Dataset (Built-in)",
+            "total_rows": 150,
+            "mode": "demo",
+            "is_live_sheet": False,
+            "is_custom": False
         }
 
     def get_dataset_info(self) -> Dict[str, Any]:
         """Returns metadata about the active dataset."""
+        if self.active_sheet_url:
+            return {
+                "is_custom": True,
+                "is_live_sheet": True,
+                "mode": "live_sheet",
+                "sheet_url": self.active_sheet_url,
+                "filename": "Live Google Sheet",
+                "total_rows": len(self.active_custom_df) if self.active_custom_df is not None else 0
+            }
         if self.active_custom_df is not None:
             return {
                 "is_custom": True,
+                "is_live_sheet": False,
+                "mode": "custom_upload",
                 "filename": self.active_custom_filename or "Uploaded Dataset",
                 "total_rows": len(self.active_custom_df)
             }
         return {
             "is_custom": False,
-            "filename": "Connected Google Sheet",
+            "is_live_sheet": False,
+            "mode": "demo",
+            "filename": "Demo Dataset (Built-in)",
             "total_rows": 150
         }
 

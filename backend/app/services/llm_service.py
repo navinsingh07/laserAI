@@ -3,7 +3,7 @@ import re
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 import httpx
-from ..core.config import settings
+from ..core.config import settings, BASE_DIR
 from ..models.digest import (
     FeedbackItem,
     RoleDigest,
@@ -26,11 +26,40 @@ class LLMService:
         self.api_key = settings.GEMINI_API_KEY
         self.model = settings.GEMINI_MODEL or "gemini-2.5-flash"
 
-    def generate_role_digest(self, items: List[FeedbackItem], role: UserRole) -> RoleDigest:
+    def get_precomputed_digest(self, role: UserRole) -> Optional[RoleDigest]:
+        """Loads precomputed static role insights for instant demo mode without calling Gemini."""
+        insights_path = BASE_DIR / "data" / "default_role_insights.json"
+        if insights_path.exists():
+            try:
+                with open(insights_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                role_key = role.value if hasattr(role, "value") else str(role)
+                if role_key in data:
+                    raw_dict = data[role_key]
+                    raw_dict["generated_at"] = datetime.utcnow().strftime("%b %d, %Y • %H:%M UTC")
+                    digest = RoleDigest(**raw_dict)
+                    self._attach_unified_formats(digest)
+                    return digest
+            except Exception as e:
+                print(f"[LLMService] Could not read default_role_insights.json ({e}).")
+        return None
+
+    def generate_role_digest(self, items: List[FeedbackItem], role: UserRole, is_demo_mode: bool = False) -> RoleDigest:
         """
-        Executes single-pass dynamic role filtering and qualitative feedback analysis
-        using gemini-2.5-flash Structured JSON Output or local deterministic intelligence.
+        Executes role filtering and qualitative feedback analysis.
+        - If is_demo_mode is True: serves precomputed role-filtered insights from default_role_insights.json (No Gemini call).
+        - If is_demo_mode is False: runs real-time Gemini 2.5 Flash API single-pass role-filtering pipeline.
         """
+        if is_demo_mode:
+            precomputed = self.get_precomputed_digest(role)
+            if precomputed:
+                return precomputed
+            # Fallback to local deterministic generator if JSON not found
+            digest = self._generate_fallback_digest(items, role)
+            self._attach_unified_formats(digest)
+            return digest
+
+        # Live Online Sheet Mode / Custom File Mode: Run real Gemini 2.5 Flash API
         if self.api_key:
             try:
                 digest = self._call_gemini_api(items, role)

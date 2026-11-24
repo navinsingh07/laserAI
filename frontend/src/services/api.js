@@ -129,6 +129,11 @@ export const feedbackAPI = {
     return resp.data;
   },
 
+  connectGoogleSheet: async (sheetUrl) => {
+    const resp = await api.post('/feedback/connect-sheet', { sheet_url: sheetUrl });
+    return resp.data;
+  },
+
   resetDataset: async () => {
     const resp = await api.post('/feedback/reset');
     return resp.data;
@@ -139,7 +144,13 @@ export const feedbackAPI = {
       const resp = await api.get('/feedback/dataset-info');
       return resp.data;
     } catch (e) {
-      return { is_custom: false, filename: 'Connected Google Sheet', total_rows: 150 };
+      return {
+        is_custom: false,
+        is_live_sheet: false,
+        mode: 'demo',
+        filename: 'Demo Dataset (Built-in)',
+        total_rows: 150
+      };
     }
   },
 

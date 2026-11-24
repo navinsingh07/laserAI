@@ -30,7 +30,9 @@ import {
   UploadCloud,
   RotateCcw,
   LogOut,
-  UserCheck
+  UserCheck,
+  X,
+  ExternalLink
 } from 'lucide-react';
 
 export default function DashboardScreen({
@@ -42,6 +44,7 @@ export default function DashboardScreen({
   canGoBack,
   onGoBack,
   onUploadDataset,
+  onConnectGoogleSheet,
   onResetDataset,
   onSwitchRoleToOnboarding,
   onLogout,
@@ -60,6 +63,10 @@ export default function DashboardScreen({
   const [uploadingFile, setUploadingFile] = useState(false);
   const [showDispatchModal, setShowDispatchModal] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const [showGoogleSheetModal, setShowGoogleSheetModal] = useState(false);
+  const [sheetUrlInput, setSheetUrlInput] = useState('');
+  const [connectingSheet, setConnectingSheet] = useState(false);
+  const [sheetError, setSheetError] = useState('');
   const fileInputRef = React.useRef(null);
   const settingsMenuRef = React.useRef(null);
 
@@ -92,6 +99,25 @@ export default function DashboardScreen({
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+    }
+  };
+
+  const handleConnectSheetSubmit = async (e) => {
+    e.preventDefault();
+    if (!sheetUrlInput.trim()) return;
+    setConnectingSheet(true);
+    setSheetError('');
+    try {
+      if (onConnectGoogleSheet) {
+        await onConnectGoogleSheet(sheetUrlInput.trim());
+      }
+      setShowGoogleSheetModal(false);
+      setSheetUrlInput('');
+    } catch (err) {
+      const msg = err.response?.data?.detail || err.message || 'Could not connect to Google Sheet.';
+      setSheetError(msg);
+    } finally {
+      setConnectingSheet(false);
     }
   };
 
@@ -681,7 +707,7 @@ export default function DashboardScreen({
       {/* ========================================================================= */}
       {/* CENTERED AI LOADING OVERLAY */}
       {/* ========================================================================= */}
-      {(loadingDigest || uploadingFile) && (
+      {(loadingDigest || uploadingFile || connectingSheet) && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-slate-100 flex flex-col items-center text-center space-y-4">
             <div className="relative flex items-center justify-center">
@@ -695,10 +721,18 @@ export default function DashboardScreen({
                 Wait... Laser AI is working
               </h3>
               <p className="text-xs font-bold text-indigo-600 animate-pulse">
-                {uploadingFile ? 'Ingesting uploaded CSV / Excel with Gemini...' : 'Fetching real-time data...'}
+                {connectingSheet
+                  ? 'Connecting to Live Google Sheet & executing Gemini 2.5 Flash...'
+                  : uploadingFile
+                  ? 'Ingesting uploaded CSV / Excel with Gemini 2.5 Flash...'
+                  : datasetInfo?.is_live_sheet
+                  ? `Executing Gemini 2.5 Flash analysis for ${role}...`
+                  : `Laser AI is analyzing feedback for ${role}...`}
               </p>
               <p className="text-[11px] text-slate-400 leading-relaxed pt-1">
-                Ingesting {totalSheetRowsCount} customer reviews & synthesizing role intelligence
+                {datasetInfo?.is_live_sheet
+                  ? `Ingesting live Google Sheet rows & synthesizing ${role} intelligence`
+                  : `Synthesizing ${totalSheetRowsCount} customer reviews for ${role} scope`}
               </p>
             </div>
           </div>
@@ -788,8 +822,104 @@ export default function DashboardScreen({
       )}
 
       {/* ========================================================================= */}
-      {/* MINIMAL RIGID LEFT SIDEBAR: Pinned firmly in view, only right content scrolls */}
+      {/* CONNECT LIVE GOOGLE SHEET MODAL */}
       {/* ========================================================================= */}
+      {showGoogleSheetModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl border border-slate-100 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                  <FileSpreadsheet size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900">
+                    Connect Live Google Sheet
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Fetches latest rows & executes real-time Gemini 2.5 Flash analysis
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowGoogleSheetModal(false);
+                  setSheetError('');
+                }}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConnectSheetSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Public / Shared Google Sheet URL
+                </label>
+                <input
+                  type="url"
+                  value={sheetUrlInput}
+                  onChange={(e) => {
+                    setSheetUrlInput(e.target.value);
+                    setSheetError('');
+                  }}
+                  placeholder="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5.../edit"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all font-mono"
+                  required
+                />
+                <p className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+                  💡 Make sure the sheet link sharing is set to <strong className="text-slate-700 font-semibold">"Anyone with the link can view"</strong> so Laser AI can download the CSV rows.
+                </p>
+              </div>
+
+              {sheetError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-2">
+                  <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                  <span>{sheetError}</span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between pt-2">
+                {datasetInfo?.is_live_sheet ? (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setShowGoogleSheetModal(false);
+                      if (onResetDataset) await onResetDataset();
+                    }}
+                    className="text-xs font-semibold text-slate-600 hover:text-slate-900 hover:underline transition-colors cursor-pointer"
+                  >
+                    Reset to Demo Dataset
+                  </button>
+                ) : <div />}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowGoogleSheetModal(false);
+                      setSheetError('');
+                    }}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={connectingSheet || !sheetUrlInput.trim()}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-sm disabled:opacity-50 cursor-pointer"
+                  >
+                    <Sparkles size={13} />
+                    <span>{connectingSheet ? 'Connecting & Running Gemini...' : 'Connect & Run Gemini'}</span>
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
       <aside className="w-full md:w-64 h-full bg-white border-r border-slate-200/90 flex flex-col justify-between shrink-0 select-none overflow-hidden">
         <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
           {/* Logo Brand Header: Clickable, navigates directly to Insights Dashboard */}
@@ -869,19 +999,23 @@ export default function DashboardScreen({
             </button>
           </div>
 
-          {/* DATASET SOURCE SECTION: Change CSV or Excel file */}
+          {/* DATASET SOURCE SECTION: Connect Google Sheet or Change CSV */}
           <div className="px-4 py-3 border-t border-slate-100 space-y-2">
             <div className="flex items-center justify-between px-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                 Dataset Source
               </span>
-              {datasetInfo?.isCustom ? (
+              {datasetInfo?.is_live_sheet ? (
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide bg-purple-50 text-purple-700 border border-purple-200">
+                  Live Sheet (Gemini)
+                </span>
+              ) : datasetInfo?.isCustom ? (
                 <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide bg-amber-50 text-amber-700 border border-amber-200">
-                  Custom File
+                  Custom File (Gemini)
                 </span>
               ) : (
                 <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  Google Sheet
+                  Demo (Instant)
                 </span>
               )}
             </div>
@@ -889,20 +1023,30 @@ export default function DashboardScreen({
             {/* Active Source Card */}
             <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
               <div className="flex items-start gap-2">
-                <div className="w-6 h-6 rounded-md bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 mt-0.5">
+                <div className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 mt-0.5 ${
+                  datasetInfo?.is_live_sheet
+                    ? 'bg-purple-100 text-purple-700'
+                    : datasetInfo?.isCustom
+                    ? 'bg-amber-100 text-amber-700'
+                    : 'bg-emerald-100 text-emerald-700'
+                }`}>
                   <FileSpreadsheet size={13} />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-xs font-bold text-slate-800 truncate" title={datasetInfo?.filename || 'Connected Google Sheet'}>
-                    {datasetInfo?.filename || 'Connected Google Sheet'}
+                  <div className="text-xs font-bold text-slate-800 truncate" title={datasetInfo?.filename || 'Demo Dataset'}>
+                    {datasetInfo?.is_live_sheet
+                      ? 'Live Google Sheet'
+                      : datasetInfo?.isCustom
+                      ? datasetInfo.filename
+                      : 'Demo Dataset (Built-in)'}
                   </div>
                   <div className="text-[10px] text-slate-500 font-medium">
-                    {totalSheetRowsCount} qualitative reviews
+                    {totalSheetRowsCount} customer reviews {datasetInfo?.is_live_sheet ? '• Gemini 2.5 Flash' : '• Instant Cache'}
                   </div>
                 </div>
               </div>
 
-              {/* Hidden File Input for CSV / Excel (Only Founders and PMs have dataset management permissions) */}
+              {/* Action Buttons (Only Founders and PMs have dataset management permissions) */}
               {isPrivilegedRole && (
                 <>
                   <input
@@ -914,30 +1058,42 @@ export default function DashboardScreen({
                   />
 
                   <div className="flex flex-col gap-1.5 pt-0.5">
+                    {/* Live Google Sheet Button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSheetError('');
+                        setShowGoogleSheetModal(true);
+                      }}
+                      disabled={uploadingFile || loadingDigest || connectingSheet}
+                      className="w-full py-1.5 px-2.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                      title="Connect a live Google Sheet URL"
+                    >
+                      <Sparkles size={13} className="text-indigo-600" />
+                      <span>Connect Live Google Sheet</span>
+                    </button>
+
+                    {/* Change CSV / Excel Button */}
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      disabled={uploadingFile || loadingDigest}
+                      disabled={uploadingFile || loadingDigest || connectingSheet}
                       className="w-full py-1.5 px-2.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 hover:text-slate-900 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50"
                       title="Upload CSV or Excel sheet"
                     >
-                      <UploadCloud size={13} className="text-indigo-600" />
-                      <span>{uploadingFile ? 'Analyzing...' : 'Change CSV / Excel'}</span>
+                      <UploadCloud size={13} className="text-slate-600" />
+                      <span>{uploadingFile ? 'Analyzing...' : 'Upload CSV / Excel'}</span>
                     </button>
 
-                    <div className="text-[10px] text-slate-400 text-center font-medium">
-                      Supports .CSV, .XLSX, .XLS files
-                    </div>
-
-                    {datasetInfo?.isCustom && (
+                    {(datasetInfo?.isCustom || datasetInfo?.is_live_sheet) && (
                       <button
                         type="button"
                         onClick={onResetDataset}
-                        disabled={uploadingFile || loadingDigest}
-                        className="w-full py-1 px-2 rounded-lg text-[10px] font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-100 flex items-center justify-center gap-1 transition-colors"
+                        disabled={uploadingFile || loadingDigest || connectingSheet}
+                        className="w-full py-1 px-2 rounded-lg text-[10px] font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center justify-center gap-1 transition-colors border border-slate-200/60 bg-white"
                       >
                         <RotateCcw size={11} />
-                        <span>Reset to Default Sheet</span>
+                        <span>Switch to Demo Dataset</span>
                       </button>
                     )}
                   </div>
@@ -1045,11 +1201,67 @@ export default function DashboardScreen({
             <span className="font-bold text-slate-900">{role} Scope</span>
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-slate-400">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="font-medium text-slate-500 hidden sm:inline">
-              {datasetInfo?.isCustom ? `Dataset: ${datasetInfo.filename}` : 'Google Sheets Connected'}
-            </span>
+          {/* Top Bar Indicator: Demo Dataset (Instant Mode) vs Live Google Sheet (Gemini AI Active) */}
+          <div className="flex items-center gap-2.5">
+            {datasetInfo?.is_live_sheet ? (
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-700 text-xs font-bold shadow-xs">
+                  <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse"></span>
+                  <Sparkles size={12} className="text-purple-600" />
+                  <span>Live Google Sheet (Gemini AI Active)</span>
+                </div>
+                {isPrivilegedRole && (
+                  <button
+                    type="button"
+                    onClick={onResetDataset}
+                    className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                    title="Switch back to Demo Dataset (Instant Mode)"
+                  >
+                    Switch to Demo Mode
+                  </button>
+                )}
+              </div>
+            ) : datasetInfo?.mode === 'custom_upload' || (datasetInfo?.isCustom && !datasetInfo?.is_live_sheet) ? (
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold shadow-xs">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                  <FileSpreadsheet size={12} className="text-amber-600" />
+                  <span className="truncate max-w-[180px]">Custom: {datasetInfo?.filename || 'File'} (Gemini AI Active)</span>
+                </div>
+                {isPrivilegedRole && (
+                  <button
+                    type="button"
+                    onClick={onResetDataset}
+                    className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                    title="Switch back to Demo Dataset (Instant Mode)"
+                  >
+                    Switch to Demo Mode
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold shadow-xs">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                  <Zap size={12} className="text-emerald-600 fill-current" />
+                  <span>Demo Dataset (Instant Mode)</span>
+                </div>
+                {isPrivilegedRole && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSheetError('');
+                      setShowGoogleSheetModal(true);
+                    }}
+                    className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-700 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg border border-indigo-200 transition-colors shadow-xs cursor-pointer"
+                    title="Connect a live Google Sheet URL to run real-time Gemini AI"
+                  >
+                    <Sparkles size={12} className="text-indigo-600" />
+                    <span>Connect Live Google Sheet</span>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </header>
 

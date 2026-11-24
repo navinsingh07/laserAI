@@ -1,4 +1,5 @@
 from typing import List, Optional
+from pydantic import BaseModel
 from fastapi import APIRouter, Query, UploadFile, File, HTTPException
 from ...models.digest import FeedbackItem
 from ...models.user import UserRole
@@ -6,6 +7,9 @@ from ...services.sheets_service import sheets_service
 from ...services.llm_service import llm_service
 
 router = APIRouter(prefix="/feedback", tags=["Customer Feedback Data"])
+
+class ConnectSheetRequest(BaseModel):
+    sheet_url: str
 
 @router.get("/raw", response_model=List[FeedbackItem])
 def get_raw_feedback(
@@ -15,9 +19,21 @@ def get_raw_feedback(
     """Retrieves customer feedback dataset with dynamic AI role filtering."""
     items = sheets_service.fetch_feedback_items(sheet_url=sheet_url)
     if role and role in (UserRole.ENGINEERS, UserRole.SALES):
-        digest = llm_service.generate_role_digest(items, role)
+        is_demo = sheets_service.is_demo_mode(sheet_url)
+        digest = llm_service.generate_role_digest(items, role, is_demo_mode=is_demo)
         return digest.filtered_reviews or items
     return items
+
+@router.post("/connect-sheet")
+def connect_google_sheet(req: ConnectSheetRequest):
+    """Connects a live public Google Sheet URL, exports CSV, and activates live Gemini AI mode."""
+    if not req.sheet_url or not req.sheet_url.strip():
+        raise HTTPException(status_code=400, detail="Please provide a valid Google Sheet URL.")
+    try:
+        result = sheets_service.connect_google_sheet(req.sheet_url.strip())
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/upload")
 async def upload_feedback_file(file: UploadFile = File(...)):

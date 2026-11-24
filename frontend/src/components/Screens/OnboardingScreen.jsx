@@ -113,10 +113,10 @@ export default function OnboardingScreen({
                 Wait... Laser AI is working
               </h3>
               <p className="text-xs font-bold text-indigo-600 animate-pulse">
-                {customFile ? `Ingesting ${customFile.name} & tailoring ${role} scope...` : `Fetching real-time data & tailoring ${role} scope...`}
+                {customFile ? `Ingesting ${customFile.name} with Gemini 2.5 Flash...` : `Laser AI is analyzing feedback for ${role}...`}
               </p>
               <p className="text-[11px] text-slate-400 leading-relaxed pt-1">
-                {customFile ? 'Normalizing columns & synthesizing role intelligence' : 'Ingesting 150 Google Sheet rows & synthesizing role intelligence'}
+                {customFile ? 'Normalizing columns & synthesizing role intelligence' : 'Synthesizing 150 customer reviews for demo scope'}
               </p>
             </div>
           </div>
