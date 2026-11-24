@@ -97,7 +97,7 @@ export default function OnboardingScreen({
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans selection:bg-indigo-600 selection:text-white flex flex-col relative">
 
       {/* ========================================================================= */}
-      {/* WAITING SCREEN OVERLAY (While Laser AI / Gemini processes real-time data) */}
+      {/* WAITING SCREEN OVERLAY (While Laser AI processes real-time data) */}
       {/* ========================================================================= */}
       {(isSubmitting || loadingDigest) && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
@@ -113,7 +113,7 @@ export default function OnboardingScreen({
                 Wait... Laser AI is working
               </h3>
               <p className="text-xs font-bold text-indigo-600 animate-pulse">
-                {customFile ? `Ingesting ${customFile.name} with Gemini 2.5 Flash...` : `Laser AI is analyzing feedback for ${role}...`}
+                {customFile ? `Ingesting ${customFile.name} with Laser AI...` : `Laser AI is analyzing feedback for ${role}...`}
               </p>
               <p className="text-[11px] text-slate-400 leading-relaxed pt-1">
                 {customFile ? 'Normalizing columns & synthesizing role intelligence' : 'Synthesizing 150 customer reviews for demo scope'}

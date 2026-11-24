@@ -722,11 +722,11 @@ export default function DashboardScreen({
               </h3>
               <p className="text-xs font-bold text-indigo-600 animate-pulse">
                 {connectingSheet
-                  ? 'Connecting to Live Google Sheet & executing Gemini 2.5 Flash...'
+                  ? 'Connecting to Live Google Sheet & executing Laser AI...'
                   : uploadingFile
-                  ? 'Ingesting uploaded CSV / Excel with Gemini 2.5 Flash...'
+                  ? 'Ingesting uploaded CSV / Excel with Laser AI...'
                   : datasetInfo?.is_live_sheet
-                  ? `Executing Gemini 2.5 Flash analysis for ${role}...`
+                  ? `Executing Laser AI analysis for ${role}...`
                   : `Laser AI is analyzing feedback for ${role}...`}
               </p>
               <p className="text-[11px] text-slate-400 leading-relaxed pt-1">
@@ -837,7 +837,7 @@ export default function DashboardScreen({
                     Connect Live Google Sheet
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Fetches latest rows & executes real-time Gemini 2.5 Flash analysis
+                    Fetches latest rows & executes real-time Laser AI analysis
                   </p>
                 </div>
               </div>
@@ -912,7 +912,7 @@ export default function DashboardScreen({
                     className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-sm disabled:opacity-50 cursor-pointer"
                   >
                     <Sparkles size={13} />
-                    <span>{connectingSheet ? 'Connecting & Running Gemini...' : 'Connect & Run Gemini'}</span>
+                    <span>{connectingSheet ? 'Connecting & Running Laser AI...' : 'Connect & Run Laser AI'}</span>
                   </button>
                 </div>
               </div>
@@ -1007,11 +1007,11 @@ export default function DashboardScreen({
               </span>
               {datasetInfo?.is_live_sheet ? (
                 <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide bg-purple-50 text-purple-700 border border-purple-200">
-                  Live Sheet (Gemini)
+                  Live Sheet (Laser AI)
                 </span>
               ) : datasetInfo?.isCustom ? (
                 <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide bg-amber-50 text-amber-700 border border-amber-200">
-                  Custom File (Gemini)
+                  Custom File (Laser AI)
                 </span>
               ) : (
                 <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -1041,7 +1041,7 @@ export default function DashboardScreen({
                       : 'Demo Dataset (Built-in)'}
                   </div>
                   <div className="text-[10px] text-slate-500 font-medium">
-                    {totalSheetRowsCount} customer reviews {datasetInfo?.is_live_sheet ? '• Gemini 2.5 Flash' : '• Instant Cache'}
+                    {totalSheetRowsCount} customer reviews {datasetInfo?.is_live_sheet ? '• Laser AI Active' : '• Instant Cache'}
                   </div>
                 </div>
               </div>
@@ -1201,14 +1201,14 @@ export default function DashboardScreen({
             <span className="font-bold text-slate-900">{role} Scope</span>
           </div>
 
-          {/* Top Bar Indicator: Demo Dataset (Instant Mode) vs Live Google Sheet (Gemini AI Active) */}
+          {/* Top Bar Indicator: Demo Dataset (Instant Mode) vs Live Google Sheet (Laser AI Active) */}
           <div className="flex items-center gap-2.5">
             {datasetInfo?.is_live_sheet ? (
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-700 text-xs font-bold shadow-xs">
                   <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse"></span>
                   <Sparkles size={12} className="text-purple-600" />
-                  <span>Live Google Sheet (Gemini AI Active)</span>
+                  <span>Live Google Sheet (Laser AI Active)</span>
                 </div>
                 {isPrivilegedRole && (
                   <button
@@ -1226,7 +1226,7 @@ export default function DashboardScreen({
                 <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold shadow-xs">
                   <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
                   <FileSpreadsheet size={12} className="text-amber-600" />
-                  <span className="truncate max-w-[180px]">Custom: {datasetInfo?.filename || 'File'} (Gemini AI Active)</span>
+                  <span className="truncate max-w-[180px]">Custom: {datasetInfo?.filename || 'File'} (Laser AI Active)</span>
                 </div>
                 {isPrivilegedRole && (
                   <button
@@ -1254,7 +1254,7 @@ export default function DashboardScreen({
                       setShowGoogleSheetModal(true);
                     }}
                     className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-700 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg border border-indigo-200 transition-colors shadow-xs cursor-pointer"
-                    title="Connect a live Google Sheet URL to run real-time Gemini AI"
+                    title="Connect a live Google Sheet URL to run real-time Laser AI"
                   >
                     <Sparkles size={12} className="text-indigo-600" />
                     <span>Connect Live Google Sheet</span>
